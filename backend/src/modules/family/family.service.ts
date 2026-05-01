@@ -15,8 +15,8 @@ import { CreateFamilyDto, GenerateInviteDto } from './family.dto';
 
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
 // Loại bỏ: 0 (nhầm O), 1 (nhầm I/l), O, I để tránh ambiguity khi user gõ tay
-const INVITE_CHARSET   = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const INVITE_LENGTH    = 8;
+const INVITE_CHARSET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const INVITE_LENGTH = 8;
 const INVITE_EXPIRY_MS = 48 * 60 * 60 * 1000; // 48 giờ
 
 // ─── PURE HELPER ─────────────────────────────────────────────────────────────
@@ -79,7 +79,7 @@ export class FamilyService {
 
     // Chỉ trưởng nhóm được kick người khác, hoặc tự rời
     const isLeader = group.TruongNhom === requesterId;
-    const isSelf   = targetUserId === requesterId;
+    const isSelf = targetUserId === requesterId;
     if (!isLeader && !isSelf) throw { statusCode: 403, message: 'Không có quyền thực hiện thao tác này' };
 
     // Trưởng nhóm không được tự rời (cần chuyển quyền trước)
@@ -104,23 +104,32 @@ export class FamilyService {
     if (group.TruongNhom !== requesterId)
       throw { statusCode: 403, message: 'Chỉ trưởng nhóm mới được tạo mã mời' };
 
-    const code     = generateInviteCode();
-    const maxUses  = dto.maxUses ?? 1;
+    const code = generateInviteCode();
+    const maxUses = dto.maxUses ?? 1;
     const expiresAt = new Date(Date.now() + INVITE_EXPIRY_MS);
 
     const invite = await this.repo.createInvite(groupId, requesterId, code, maxUses, expiresAt);
 
     return {
-      code        : invite.Code,
-      maxUses     : invite.MaxUses,
-      expiresAt   : invite.ExpiresAt,
+      code: invite.Code,
+      maxUses: invite.MaxUses,
+      expiresAt: invite.ExpiresAt,
       // Thông tin tiện lợi cho frontend hiển thị
       expiresInHours: 48,
-      groupName   : group.TenNhom,
+      groupName: group.TenNhom,
     };
   }
 
-  async revokeInvite(inviteId: string, requesterId: number) {
+  // groupId: dùng để verify invite thuộc đúng nhóm trước khi revoke
+  // inviteId: UNIQUEIDENTIFIER (UUID string) — Id của dòng FamilyInvites
+  async revokeInvite(groupId: number, inviteId: string, requesterId: number): Promise<void> {
+    const group = await this.repo.getGroupById(groupId);
+    if (!group) throw { statusCode: 404, message: 'Nhóm không tồn tại' };
+
+    // Chỉ trưởng nhóm được thu hồi mã mời của người khác
+    if (group.TruongNhom !== requesterId)
+      throw { statusCode: 403, message: 'Chỉ trưởng nhóm mới được thu hồi mã mời' };
+
     await this.repo.revokeInvite(inviteId, requesterId);
   }
 

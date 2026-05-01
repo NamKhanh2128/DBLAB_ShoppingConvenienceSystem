@@ -22,8 +22,8 @@ router.post('/',     validateRequest(CreateFamilySchema), ctrl.create.bind(ctrl)
 router.post('/join', validateRequest(JoinFamilySchema),   ctrl.joinFamily.bind(ctrl));
 
 // ── Dynamic routes ───────────────────────────────────────────────────────────
-router.get('/groupId/members',                   ctrl.getMembers.bind(ctrl));
-router.get('/groupId/invites',                   ctrl.getInvites.bind(ctrl));
+router.get('/:groupId/members',                   ctrl.getMembers.bind(ctrl));
+router.get('/:groupId/invites',                   ctrl.getInvites.bind(ctrl));
 router.post('/:groupId/invites',                 validateRequest(GenerateInviteSchema), ctrl.generateInvite.bind(ctrl));
 router.delete('/:groupId/members/:userId',       ctrl.removeMember.bind(ctrl));
 router.delete('/:groupId/invites/:inviteId',     ctrl.revokeInvite.bind(ctrl));

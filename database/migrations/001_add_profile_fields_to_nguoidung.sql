@@ -1,4 +1,4 @@
--- ============================================================
+﻿-- ============================================================
 -- MIGRATION: 001_add_profile_fields_to_nguoidung.sql
 -- Mô tả : Thêm cột SoDienThoai và Bio vào bảng NguoiDung
 --          để đồng bộ với Backend model và Frontend form.

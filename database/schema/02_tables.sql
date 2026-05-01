@@ -1,4 +1,4 @@
-USE shoppingdb;
+﻿USE shoppingdb;
 GO
 
 -- ==========================================

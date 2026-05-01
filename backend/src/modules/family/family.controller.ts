@@ -25,7 +25,7 @@ export class FamilyController {
   async getMembers(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
       const groupId = Number(req.params.groupId);
-      const data    = await svc.getMembers(groupId, req.user.id);
+      const data = await svc.getMembers(groupId, req.user.id);
       return createSuccess(res, data);
     } catch (e) { next(e); }
   }
@@ -34,7 +34,7 @@ export class FamilyController {
   async getInvites(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
       const groupId = Number(req.params.groupId);
-      const data    = await svc.getGroupInvites(groupId, req.user.id);
+      const data = await svc.getGroupInvites(groupId, req.user.id);
       return createSuccess(res, data);
     } catch (e) { next(e); }
   }
@@ -43,9 +43,9 @@ export class FamilyController {
   async create(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
       const dto: CreateFamilyDto = {
-        name       : req.body.name,
+        name: req.body.name,
         description: req.body.description,
-        maxMembers : req.body.maxMembers,
+        maxMembers: req.body.maxMembers,
       };
       const data = await svc.createFamily(req.user.id, dto);
       return createSuccess(res, data, 'Tạo nhóm thành công', 201);
@@ -74,7 +74,7 @@ export class FamilyController {
   // DELETE /api/v1/family/:groupId/members/:userId — kick thành viên hoặc tự rời
   async removeMember(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
-      const groupId      = Number(req.params.groupId);
+      const groupId = Number(req.params.groupId);
       const targetUserId = Number(req.params.userId);
       await svc.removeMember(groupId, targetUserId, req.user.id);
       return createSuccess(res, null, 'Đã xóa thành viên khỏi nhóm');
@@ -84,7 +84,11 @@ export class FamilyController {
   // DELETE /api/v1/family/:groupId/invites/:inviteId — thu hồi mã mời
   async revokeInvite(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
-      await svc.revokeInvite(req.params.inviteId, req.user.id);
+      const groupId  = Number(req.params.groupId);
+      // inviteId là UNIQUEIDENTIFIER (UUID) — KHÔNG Number(), giữ nguyên string
+      const inviteId = req.params.inviteId;
+
+      await svc.revokeInvite(groupId, inviteId, req.user.id);
       return createSuccess(res, null, 'Đã thu hồi mã mời');
     } catch (e) { next(e); }
   }

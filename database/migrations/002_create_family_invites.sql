@@ -1,4 +1,4 @@
-SET QUOTED_IDENTIFIER ON;
+﻿SET QUOTED_IDENTIFIER ON;
 GO
 -- ============================================================
 -- MIGRATION 002: Family Invite System

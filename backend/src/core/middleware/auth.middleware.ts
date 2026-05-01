@@ -2,11 +2,20 @@ import { Request, Response, NextFunction } from 'express';
 import { verifyToken } from '../utils/jwt';
 import { createError } from '../utils/response';
 
-export interface AuthenticatedRequest extends Request {
-  user?: any;
+// 1. Định nghĩa chính xác cấu trúc dữ liệu giấu trong Token (Không dùng any)
+export interface JwtPayload {
+  id: number; // Đổi thành string nếu ID trong database NguoiDung của bạn là UUID
+  email?: string;
+  role?: string;
 }
 
-export const authenticate = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+// 2. Kế thừa Request từ Express, KHÔNG dùng dấu "?" để đảm bảo Controller gọi là có data
+export interface AuthenticatedRequest extends Request {
+  user: JwtPayload;
+}
+
+// 3. Middleware xác thực
+export const authenticate = (req: Request, res: Response, next: NextFunction) => {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -14,15 +23,20 @@ export const authenticate = (req: AuthenticatedRequest, res: Response, next: Nex
     }
 
     const token = authHeader.split(' ')[1];
-    const decoded = verifyToken(token);
-    
-    if (!decoded) {
+
+    // Giải mã token và ép kiểu nó về đúng định dạng JwtPayload đã khai báo ở trên
+    const decoded = verifyToken(token) as JwtPayload;
+
+    if (!decoded || !decoded.id) {
       return createError(res, 'Invalid or expired token', 401);
     }
 
-    req.user = decoded;
+    // Ép kiểu req sang AuthenticatedRequest để gán biến user một cách hợp lệ
+    (req as AuthenticatedRequest).user = decoded;
+
     next();
   } catch (error) {
-    next(error);
+    // Bắt lỗi khi token bị hết hạn (jwt expired) hoặc sai chữ ký
+    return createError(res, 'Invalid or expired token', 401);
   }
 };

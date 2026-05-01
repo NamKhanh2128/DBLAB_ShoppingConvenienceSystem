@@ -4,5 +4,5 @@
   "ignore": ["dist", "node_modules", "**/*.spec.ts", "**/*.js"],
   "exec": "ts-node --transpile-only src/server.ts",
   "verbose": true,
-  "delay": 500
+  "delay": 1500
 }
