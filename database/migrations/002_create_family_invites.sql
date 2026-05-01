@@ -1,3 +1,5 @@
+SET QUOTED_IDENTIFIER ON;
+GO
 -- ============================================================
 -- MIGRATION 002: Family Invite System
 -- Mô tả : Tạo bảng FamilyInvites để hỗ trợ mã mời tham gia nhóm.
@@ -69,7 +71,7 @@ BEGIN
     -- Index để lấy danh sách invite theo nhóm
     CREATE NONCLUSTERED INDEX IX_FamilyInvites_MaNhom
         ON FamilyInvites (MaNhom)
-        WHERE IsDeleted = 0;
+        INCLUDE (Code, ExpiresAt, UsedCount, MaxUses, IsDeleted);
 
     PRINT '✅ Tạo bảng FamilyInvites thành công';
 END
