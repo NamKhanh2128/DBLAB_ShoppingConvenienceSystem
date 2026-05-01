@@ -1,0 +1,326 @@
+% !TEX TS-program = pdflatex
+\documentclass[12pt,a4paper]{report}
+
+% ===== PAGE SETUP =====
+\usepackage[margin=2.5cm]{geometry}
+
+% ===== VIETNAMESE =====
+\usepackage[utf8]{inputenc}
+\usepackage[T1,T5]{fontenc}
+\usepackage[vietnamese]{babel}
+\usepackage{mathptmx} % Times New Roman font
+
+% ===== BASIC PACKAGES =====
+\usepackage{enumitem}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{titlesec}
+\usepackage{setspace}
+\usepackage{hyperref}
+\usepackage{graphicx}
+\usepackage{float}
+
+% ===== FORMAT =====
+\setstretch{1.3}
+\hypersetup{colorlinks=true, linkcolor=black}
+
+% ===== NUMBERING =====
+\renewcommand{\thesection}{\Roman{chapter}.\arabic{section}}
+\renewcommand{\thesubsection}{\thesection.\arabic{subsection}}
+
+% ===== IMAGE PATH =====
+\graphicspath{{./}{./images/}}
+
+% ================= TITLE PAGE =================
+\title{\textbf{BÁO CÁO ĐỀ XUẤT PROJECT}\\[4pt]
+\Large CƠ SỞ DỮ LIỆU HỆ THỐNG ĐI CHỢ TIỆN LỢI}
+\author{Nhóm: 02}
+\date{\today}
+
+\begin{document}
+\maketitle
+\pagenumbering{roman}
+\tableofcontents
+\newpage
+\pagenumbering{arabic}
+\newpage
+
+\chapter{Thông tin nhóm và phân công công việc}
+\section{Giới thiệu thành viên và phân công công việc}
+\begin{longtable}{|p{3cm}|p{4cm}|p{7cm}|}
+\hline
+\textbf{Họ và tên} & \textbf{Vai trò} & \textbf{Công việc phụ trách} \\
+\hline
+Nguyễn Đức Nam Khánh & Nhóm trưởng & Phân tích nghiệp vụ, thiết kế CSDL, tổng hợp báo cáo \\
+\hline
+Trần Đình Tuệ & Backend Developer & Thiết kế API, xử lý logic danh sách mua sắm và kho thực phẩm \\
+\hline
+Tô Văn Thành & Frontend Developer & Thiết kế giao diện người dùng, luồng nhóm gia đình, báo cáo trực quan \\
+\hline
+Lê Nguyễn Vĩnh Nam & Database Engineer & Thiết kế ERD, chuẩn hóa bảng dữ liệu, trigger/thủ tục SQL \\
+\hline
+\end{longtable}
+
+\chapter{Giới thiệu đề tài}
+
+
+\section{Giới thiệu đề tài}
+Tên đề tài: Cơ sở dữ liệu Hệ thống Đi Chợ Tiện Lợi.  
+
+Đây là hệ thống hỗ trợ các gia đình trong việc quản lý hoạt động mua sắm và sử dụng thực phẩm hàng ngày. Mục tiêu chính là giúp người dùng kiểm soát tốt nguyên liệu đang có, hạn chế mua dư thừa, tận dụng thực phẩm trước khi hết hạn và chủ động xây dựng thực đơn phù hợp với nhu cầu thực tế.  
+
+Hệ thống đóng vai trò như một trợ lý nội trợ thông minh, kết nối các thành viên trong gia đình trên cùng một không gian dữ liệu chung để mọi người cùng phối hợp trong việc đi chợ, nấu ăn và theo dõi kho thực phẩm.  
+
+\section{Đối tượng chính trong bài toán}
+Bài toán tập trung vào ba nhóm người dùng chính.  
+
+\textbf{1) Người quản lý gia đình (Trưởng nhóm)}  
+
+Đây là đối tượng sử dụng chính của hệ thống. Họ thường là người chịu trách nhiệm lập kế hoạch bữa ăn, tạo danh sách đi chợ, quản lý thực phẩm trong tủ lạnh và theo dõi chi tiêu sinh hoạt.  
+
+Người này có quyền tạo nhóm gia đình, mời thành viên tham gia và phân công nhiệm vụ mua sắm cho từng người.  
+
+\textbf{2) Thành viên gia đình}  
+
+Các thành viên cùng tham gia nhóm có thể xem danh sách mua sắm chung, cập nhật trạng thái món đã mua, kiểm tra nguyên liệu trong tủ lạnh và theo dõi kế hoạch bữa ăn của cả nhà.  
+
+Vai trò này giúp tăng tính phối hợp, tránh mua trùng lặp và chia sẻ trách nhiệm nội trợ giữa các thành viên.  
+
+\textbf{3) Quản trị viên hệ thống (Admin)}  
+
+Đây là đối tượng quản lý toàn bộ hệ thống ở mức vận hành. Admin chịu trách nhiệm kiểm soát tài khoản người dùng, chuẩn hóa danh mục dữ liệu lõi như loại thực phẩm, đơn vị tính và công thức nấu ăn, đồng thời theo dõi hiệu suất hoạt động chung.  
+
+\section{Hướng tiếp cận và phương án giải quyết}
+Để giải quyết bài toán thực tế, hệ thống được xây dựng theo hướng liên kết chặt chẽ giữa mua sắm – tồn kho – chế biến – thống kê.  
+
+Thay vì quản lý rời rạc bằng giấy nhớ hoặc trao đổi qua tin nhắn, mọi dữ liệu sẽ được tập trung trên một nền tảng thống nhất. Khi người dùng tạo danh sách mua sắm, hệ thống có thể chia sẻ ngay cho các thành viên khác; khi mua xong, dữ liệu sẽ tự động chuyển vào kho thực phẩm; khi nấu ăn, hệ thống tiếp tục trừ tồn kho và ghi nhận lịch sử tiêu thụ.  
+
+Cách tiếp cận này giúp đảm bảo dữ liệu luôn xuyên suốt và phản ánh đúng tình trạng thực tế trong gia đình, từ đó hỗ trợ đưa ra các gợi ý món ăn và báo cáo tiêu dùng chính xác hơn.
+
+
+\chapter{Phân tích nghiệp vụ và chức năng hệ thống}
+
+\section{Mô tả nghiệp vụ chính của hệ thống}
+
+\subsection{Nghiệp vụ quản lý tài khoản và nhóm gia đình}
+Quy trình bắt đầu từ việc người dùng đăng ký tài khoản và tạo hồ sơ cá nhân cơ bản. Sau khi đăng nhập, người dùng có thể tạo một nhóm gia đình chung để các thành viên cùng sử dụng dữ liệu mua sắm và thực phẩm.  
+Hệ thống hỗ trợ mã mời hoặc liên kết tham gia nhóm, giúp việc thêm thành viên trở nên đơn giản và thân thiện với người dùng không rành công nghệ.  
+Sau khi tham gia nhóm, dữ liệu như danh sách đi chợ, thực đơn và kho thực phẩm sẽ được đồng bộ theo thời gian thực để mọi thành viên đều nhìn thấy cùng một thông tin.  
+
+\subsection{Nghiệp vụ quản lý danh sách mua sắm}
+Đây là nghiệp vụ trung tâm của hệ thống, phục vụ nhu cầu đi chợ hằng ngày hoặc theo tuần.  
+Người dùng chỉ cần nhập tên thực phẩm, số lượng và ghi chú ngắn. Hệ thống sẽ hỗ trợ phân loại theo nhóm như rau củ, thịt cá, gia vị hoặc đồ khô để thuận tiện khi mua sắm ngoài thực tế.  
+Một điểm quan trọng là hệ thống cho phép phân công từng món cho từng thành viên phụ trách, ví dụ ai tiện đường đi siêu thị sẽ mua món đó. Khi một món đã được mua, chỉ cần đánh dấu hoàn tất và toàn bộ nhóm sẽ nhìn thấy cập nhật ngay lập tức.  
+Sau khi hoàn tất chuyến đi chợ, các mặt hàng đã mua sẽ được chuyển tự động vào kho thực phẩm của gia đình, giảm thao tác nhập lại.  
+
+\subsection{Nghiệp vụ quản lý thực phẩm trong tủ lạnh}
+Sau khi mua sắm, thực phẩm được đưa vào kho lưu trữ ảo (tủ lạnh) để theo dõi số lượng, vị trí và hạn sử dụng.  
+Người dùng có thể cập nhật rất nhanh các thông tin như tên thực phẩm, số lượng, đơn vị, ngày hết hạn và vị trí thực tế như ngăn đá, ngăn mát hoặc tủ đồ khô.  
+Hệ thống chạy ngầm để theo dõi hạn sử dụng và tự động gửi cảnh báo trước 3 ngày khi thực phẩm sắp hết hạn. Điều này giúp gia đình ưu tiên sử dụng nguyên liệu đúng lúc, hạn chế tối đa lãng phí.  
+Khi nấu ăn, người dùng có thể trừ số lượng bằng các thao tác nhanh như dùng hết, dùng một nửa hoặc nhập số lượng cụ thể, giúp cập nhật tồn kho dễ dàng.  
+
+\subsection{Nghiệp vụ gợi ý món ăn và kế hoạch bữa ăn}
+Đây là chức năng giải quyết trực tiếp bài toán thực tế: “Hôm nay ăn gì?”  
+Hệ thống sẽ quét nguyên liệu còn lại trong tủ lạnh, đặc biệt ưu tiên những món sắp hết hạn, sau đó đối chiếu với dữ liệu công thức để đưa ra các món phù hợp nhất.  
+Người dùng cũng có thể chủ động lên thực đơn theo ngày hoặc theo tuần. Khi chọn món ăn cho từng bữa, hệ thống sẽ tự động kiểm tra nguyên liệu còn thiếu và đề xuất bổ sung vào danh sách đi chợ.  
+Nhờ vậy, việc lên kế hoạch bữa ăn trở nên khoa học hơn, đồng thời giảm áp lực suy nghĩ món ăn mỗi ngày.  
+
+\subsection{Nghiệp vụ báo cáo và thống kê}
+Toàn bộ quá trình mua sắm, tiêu thụ và thực phẩm bị bỏ đi sẽ được hệ thống ghi nhận tự động.  
+Từ dữ liệu này, hệ thống tạo ra các báo cáo ngắn gọn, trực quan về:  
+\begin{itemize}
+    \item xu hướng chi tiêu mua sắm,
+    \item mức tiêu thụ thực phẩm,
+    \item nhóm thực phẩm hay bị lãng phí,
+    \item chi phí theo tuần hoặc tháng.
+\end{itemize}
+Quan trọng hơn, hệ thống có thể đưa ra khuyến nghị dễ hiểu cho người dùng, ví dụ gia đình đang mua quá nhiều rau xanh hoặc thường dư thực phẩm vào cuối tuần.  
+Điều này giúp khách hàng không chỉ sử dụng hệ thống để quản lý hiện tại mà còn cải thiện thói quen tiêu dùng trong tương lai.
+
+\section{Các chức năng chính của hệ thống}
+
+\subsection{Quản lý tài khoản và nhóm gia đình}
+Chức năng này giúp người dùng tạo không gian sử dụng chung cho gia đình, nơi mọi thành viên có thể cùng truy cập và phối hợp trên cùng một nguồn dữ liệu.  
+
+\begin{itemize}
+    \item Đăng ký, đăng nhập, cập nhật hồ sơ cá nhân 
+    \item Tạo nhóm gia đình 
+    \item Mời thành viên bằng mã mời hoặc liên kết 
+    \item Phân quyền trưởng nhóm và thành viên 
+    \item Đồng bộ dữ liệu chung trong nhóm 
+\end{itemize}
+
+Đây là chức năng nền tảng giúp mọi thành viên cùng làm việc trên một không gian dữ liệu thống nhất.  
+
+\subsection{Quản lý danh sách mua sắm}
+Chức năng hỗ trợ gia đình lập kế hoạch đi chợ một cách có tổ chức, giúp biết rõ cần mua gì, ai mua và tiến độ thực hiện đến đâu.  
+
+\begin{itemize}
+    \item Tạo danh sách theo ngày, tuần hoặc sự kiện 
+    \item Phân loại mặt hàng theo danh mục 
+    \item Phân công người mua từng món 
+    \item Cập nhật trạng thái đã mua theo thời gian thực 
+    \item Tự động chuyển thực phẩm đã mua vào kho 
+\end{itemize}
+
+Chức năng này giúp hạn chế mua thiếu hoặc mua trùng, đặc biệt hữu ích với gia đình có nhiều người cùng tham gia đi chợ.  
+
+\subsection{Quản lý thực phẩm trong tủ lạnh}
+Chức năng này cho phép theo dõi toàn bộ nguyên liệu đang có trong gia đình, từ số lượng, vị trí bảo quản cho đến thời gian sử dụng.  
+
+\begin{itemize}
+    \item Thêm mới hoặc tự động nhập từ danh sách mua sắm 
+    \item Quản lý số lượng, đơn vị, vị trí lưu trữ 
+    \item Theo dõi hạn sử dụng 
+    \item Cảnh báo thực phẩm sắp hết hạn 
+    \item Cập nhật tồn kho khi sử dụng 
+    \item Tìm kiếm theo tên hoặc danh mục 
+\end{itemize}
+
+Hệ thống tập trung giải quyết vấn đề lãng phí thực phẩm do quên sử dụng hoặc không nắm được nguyên liệu còn lại.  
+
+\subsection{Gợi ý món ăn thông minh}
+Đây là chức năng hỗ trợ người dùng tận dụng tối đa nguyên liệu sẵn có để nhanh chóng lựa chọn món ăn phù hợp cho từng bữa.  
+
+\begin{itemize}
+    \item Gợi ý món ăn từ nguyên liệu sẵn có 
+    \item Ưu tiên nguyên liệu sắp hết hạn 
+    \item Tìm kiếm món theo nguyên liệu 
+    \item Hiển thị nguyên liệu còn thiếu 
+    \item Đề xuất thêm vào danh sách mua sắm 
+\end{itemize}
+
+Đây là chức năng quan trọng giúp trả lời nhanh bài toán thực tế: “Hôm nay ăn gì với những gì đang có?”  
+
+\subsection{Lên kế hoạch bữa ăn}
+Chức năng này giúp gia đình chủ động xây dựng thực đơn trước cho từng ngày hoặc cả tuần, từ đó kiểm soát dinh dưỡng và chi phí hiệu quả hơn.  
+
+\begin{itemize}
+    \item Lập thực đơn theo ngày hoặc tuần 
+    \item Chọn món theo sở thích 
+    \item Đồng bộ lịch bữa ăn cho cả gia đình 
+    \item Kiểm tra nguyên liệu còn thiếu 
+    \item Tự động tạo danh sách mua bổ sung 
+\end{itemize}
+
+Chức năng này giúp gia đình chủ động hơn trong sinh hoạt và cân đối dinh dưỡng.  
+
+\subsection{Báo cáo và thống kê}
+Chức năng này cung cấp góc nhìn tổng quan về thói quen mua sắm, tiêu dùng và mức độ lãng phí thực phẩm của gia đình theo thời gian.  
+
+\begin{itemize}
+    \item Thống kê chi phí mua sắm 
+    \item Phân tích mức tiêu thụ thực phẩm 
+    \item Báo cáo thực phẩm bị lãng phí 
+    \item Gợi ý điều chỉnh thói quen mua sắm 
+    \item Biểu đồ xu hướng theo tuần/tháng 
+\end{itemize}
+
+Báo cáo không chỉ cho biết gia đình đã chi tiêu bao nhiêu mà còn giúp phát hiện những loại thực phẩm thường xuyên bị dư thừa.
+
+\chapter{Thiết kế cơ sở dữ liệu}
+
+\section{Xác định sơ đồ CSDL ban đầu}
+
+\subsection{Sơ đồ ER và ERD}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\linewidth]{ER}
+    \caption{Mô hình thực thể - liên kết (ER) của hệ thống}
+    \label{fig:er}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\linewidth]{ERD}
+    \caption{Sơ đồ thực thể - quan hệ (ERD) của hệ thống}
+    \label{fig:er}
+\end{figure}
+
+\subsection{Các bảng chính đề xuất}
+
+\textbf{Nhóm bảng người dùng và nhóm}
+\begin{itemize}
+    \item NguoiDung(MaNguoiDung, HoTen, Email, MatKhau, VaiTro)
+    \item NhomGiaDinh(MaNhom, TenNhom, TruongNhom)
+    \item ThanhVienNhom(MaNhom, MaNguoiDung, VaiTro)
+\end{itemize}
+
+\textbf{Nhóm bảng mua sắm}
+\begin{itemize}
+    \item DanhSachMuaSam(MaDanhSach, MaNhom, NgayTao, TrangThai)
+    \item ChiTietMuaSam(MaCT, MaDanhSach, TenThucPham, SoLuong, DonVi, NguoiPhuTrach)
+\end{itemize}
+
+\textbf{Nhóm bảng kho thực phẩm}
+\begin{itemize}
+    \item KhoThucPham(MaTP, MaNhom, TenTP, SoLuong, DonVi, HanSuDung, ViTri)
+\end{itemize}
+
+\textbf{Nhóm bảng món ăn}
+\begin{itemize}
+    \item MonAn(MaMon, TenMon, CongThuc, HuongDan)
+    \item NguyenLieuMon(MaMon, MaTP, SoLuongCan)
+\end{itemize}
+
+\textbf{Nhóm bảng kế hoạch và báo cáo}
+\begin{itemize}
+    \item KeHoachBuaAn(MaKeHoach, MaNhom, Ngay, Buoi, MaMon)
+    \item BaoCaoChiTieu(MaBaoCao, MaNhom, TuanThang, TongChiPhi, TongLangPhi, NgayTao)
+\end{itemize}
+
+\subsection{Các mối quan hệ chính}
+
+\begin{itemize}
+    \item NguoiDung -- NhomGiaDinh: quan hệ nhiều-nhiều thông qua ThanhVienNhom.
+    \item NhomGiaDinh -- DanhSachMuaSam: quan hệ một-nhiều.
+    \item DanhSachMuaSam -- ChiTietMuaSam: quan hệ một-nhiều.
+    \item NguoiDung -- ChiTietMuaSam: quan hệ một-nhiều (phụ trách).
+    \item NhomGiaDinh -- KhoThucPham: quan hệ một-nhiều.
+    \item MonAn -- KhoThucPham: quan hệ nhiều-nhiều qua NguyenLieuMon.
+    \item NhomGiaDinh -- KeHoachBuaAn: quan hệ một-nhiều.
+    \item MonAn -- KeHoachBuaAn: quan hệ một-nhiều.
+    \item NhomGiaDinh -- BaoCaoChiTieu: quan hệ một-nhiều.
+\end{itemize}
+
+\subsection{Luồng xử lý nghiệp vụ}
+
+\begin{itemize}
+    \item Tạo danh sách mua sắm cho nhóm.
+    \item Phân công thành viên phụ trách.
+    \item Sau khi mua, nhập vào kho thực phẩm.
+    \item Sử dụng nguyên liệu để tạo món ăn.
+    \item Lập kế hoạch bữa ăn.
+    \item Tổng hợp báo cáo chi tiêu.
+\end{itemize}
+
+\chapter{Công nghệ sử dụng}
+\section{Công nghệ và ngôn ngữ lập trình cần thiết}
+\begin{itemize}
+    \item \textbf{Cơ sở dữ liệu:} MySQL
+    \item \textbf{Backend:} 
+    \item \textbf{Frontend:} 
+    \item \textbf{Ngôn ngữ:} 
+    \item \textbf{Thiết kế UI/UX:} 
+    \item \textbf{Quản lý mã nguồn:} 
+\end{itemize}
+
+\chapter{Định hướng phát triển hệ thống}
+\section{Định hướng chức năng phù hợp với bài toán}
+Từ các nghiệp vụ trên, hệ thống được định hướng xoay quanh 5 nhóm chức năng chính:
+\begin{itemize}
+    \item quản lý tài khoản và nhóm gia đình,
+    \item quản lý danh sách mua sắm,
+    \item quản lý kho thực phẩm,
+    \item gợi ý món ăn và lập kế hoạch bữa ăn,
+    \item báo cáo và thống kê tiêu dùng.
+\end{itemize}
+Các chức năng này liên kết thành một vòng khép kín:\newline
+\textbf{lên kế hoạch $\rightarrow$ mua sắm $\rightarrow$ lưu trữ $\rightarrow$ sử dụng $\rightarrow$ phân tích $\rightarrow$ tối ưu cho lần sau.}
+\section{Định hướng phát triển hệ thống}
+
+Trong tương lai, hệ thống sẽ được mở rộng theo hướng thông minh và tiện lợi hơn, như gợi ý món ăn phù hợp với nguyên liệu sẵn có, phát triển ứng dụng trên điện thoại và hỗ trợ quét mã vạch để nhập thực phẩm nhanh.
+\newline
+Ngoài ra, hệ thống có thể nâng cấp phần báo cáo chi tiêu, theo dõi thực phẩm dư thừa và kết nối với siêu thị hoặc dịch vụ giao hàng để hỗ trợ mua sắm trực tiếp.
+\end{document}
