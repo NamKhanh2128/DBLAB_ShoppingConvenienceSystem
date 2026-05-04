@@ -84,10 +84,10 @@ export class FamilyController {
   // DELETE /api/v1/family/:groupId/invites/:inviteId — thu hồi mã mời
   async revokeInvite(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
-      const groupId  = Number(req.params.groupId);
-      // inviteId là UNIQUEIDENTIFIER (UUID) — KHÔNG Number(), giữ nguyên string
-      const inviteId = req.params.inviteId;
+      const groupId = Number(req.params.groupId);
+      const inviteId = Number(req.params.inviteId); // Ép kiểu an toàn
 
+      // Truyền đủ groupId, inviteId và userId xuống tầng logic
       await svc.revokeInvite(groupId, inviteId, req.user.id);
       return createSuccess(res, null, 'Đã thu hồi mã mời');
     } catch (e) { next(e); }
