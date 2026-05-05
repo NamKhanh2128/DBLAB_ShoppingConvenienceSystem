@@ -20,13 +20,14 @@ export class AuthService {
   }
 
   async register(data: { hoTen: string; email: string; password: string }) {
-    const exists = await this.repo.findByEmail(data.email);
+    const email = data.email.trim().toLowerCase();
+    const exists = await this.repo.findByEmail(email);
     if (exists) throw { statusCode: 400, message: 'Email đã được sử dụng' };
 
     const hashed = await hashPassword(data.password);
-    const id = await this.repo.create({ hoTen: data.hoTen, email: data.email, matKhauHash: hashed });
-    const user = await this.repo.findById(id);
-    return user;
+    const created = await this.repo.create({ hoTen: data.hoTen.trim(), email, matKhauHash: hashed });
+    const { MatKhauHash, ...safe } = created;
+    return safe;
   }
 
   async getMe(userId: number) {

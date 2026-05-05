@@ -127,25 +127,31 @@ export function useMealPlan() {
   const [loading, setLoading] = useState(false);
 
   const loadToday = useCallback(async () => {
-    if (!groupId) return;
+    if (!groupId) return [];
     setLoading(true);
     try {
       const res = await mealPlanApi.getToday(groupId);
-      setTodayMeals(res.data || []);
+      const data = res.data || [];
+      setTodayMeals(data);
+      return data;
     } catch (e) {
       console.error('Meal plan load error:', e);
+      return [];
     } finally {
       setLoading(false);
     }
   }, [groupId]);
 
   const loadWeek = useCallback(async (start: string, end: string) => {
-    if (!groupId) return;
+    if (!groupId) return [];
     try {
       const res = await mealPlanApi.getByDateRange(groupId, start, end);
-      setWeekMeals(res.data || []);
+      const data = res.data || [];
+      setWeekMeals(data);
+      return data;
     } catch (e) {
       console.error('Meal plan week load error:', e);
+      return [];
     }
   }, [groupId]);
 
@@ -153,7 +159,7 @@ export function useMealPlan() {
 
   const addMeal = async (data: any) => {
     await mealPlanApi.create({ ...data, maNhom: groupId });
-    await loadToday();
+    return await loadToday();
   };
 
   const removeMeal = async (id: number) => {
@@ -161,7 +167,7 @@ export function useMealPlan() {
     await loadToday();
   };
 
-  return { todayMeals, weekMeals, loading, loadToday, loadWeek, addMeal, removeMeal };
+  return { todayMeals, weekMeals, loading, loadToday, loadWeek, addMeal, removeMeal, setTodayMeals, setWeekMeals };
 }
 
 // ────────────────────────────────────────────────
@@ -245,34 +251,44 @@ export function useDashboardStats() {
     shoppingListCount: 0,
     shoppingDoneCount: 0,
     totalSpend: 0,
+    expenseTrend: [] as any[],
+    categorySpend: [] as any[],
   });
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!groupId) return;
     setLoading(true);
-
-    Promise.all([
-      inventoryApi.getAll(groupId),
-      inventoryApi.getExpiring(groupId),
-      shoppingApi.getLists(groupId),
-      reportsApi.getSummary(groupId),
-    ]).then(([inv, exp, lists, summary]) => {
+    try {
+      const [inv, exp, lists, summary] = await Promise.all([
+        inventoryApi.getAll(groupId),
+        inventoryApi.getExpiring(groupId),
+        shoppingApi.getLists(groupId),
+        reportsApi.getSummary(groupId),
+      ]);
       const allLists = lists.data || [];
       const totalItems = allLists.reduce((s: number, l: any) => s + (l.TongMon || 0), 0);
       const doneItems = allLists.reduce((s: number, l: any) => s + (l.DaMuaCount || 0), 0);
+      const summaryData = summary.data || {};
       setStats({
         inventoryCount: (inv.data || []).length,
         expiringCount: (exp.data || []).length,
         shoppingListCount: totalItems,
         shoppingDoneCount: doneItems,
-        totalSpend: summary.data?.TongChiPhi || 0,
+        totalSpend: summaryData.TongChiPhi || 0,
+        expenseTrend: summaryData.expenseTrend || [],
+        categorySpend: summaryData.categorySpend || [],
       });
-    }).catch(e => console.error('Dashboard stats error:', e))
-      .finally(() => setLoading(false));
+    } catch (e) {
+      console.error('Dashboard stats error:', e);
+    } finally {
+      setLoading(false);
+    }
   }, [groupId]);
 
-  return { stats, loading };
+  useEffect(() => { load(); }, [load]);
+
+  return { stats, loading, reload: load };
 }
 
 // ────────────────────────────────────────────────

@@ -6,18 +6,23 @@ const config: sql.config = {
   database: env.DB_NAME || 'shoppingdb',
   user: env.DB_USER || 'sa',
   password: env.DB_PASS,
+  port: env.DB_PORT || 1433,
 
   options: {
     encrypt: false,
     trustServerCertificate: true,
-    instanceName: process.env.DB_INSTANCE || 'MSSQLSERVER01'
+    // Only set instanceName if explicitly provided; using port + instanceName together causes ECONNREFUSED
+    ...(process.env.DB_INSTANCE ? { instanceName: process.env.DB_INSTANCE } : {}),
   },
 
   pool: {
     max: 10,
     min: 0,
-    idleTimeoutMillis: 30000
-  }
+    idleTimeoutMillis: 30000,
+  },
+
+  connectionTimeout: 15000,
+  requestTimeout: 30000,
 };
 
 let poolPromise: Promise<sql.ConnectionPool> | null = null;

@@ -13,20 +13,33 @@ DELETE FROM ChiTietMuaSam;
 DELETE FROM DanhSachMuaSam;
 DELETE FROM ThanhVienNhom;
 DELETE FROM NhomGiaDinh;
-DELETE FROM NguoiDung;
 GO
 
 -- ========================================================
--- 2. CHÈN DỮ LIỆU: NGƯỜI DÙNG (FORCE ID 1-4)
+-- 2. CHÈN / CẬP NHẬT DỮ LIỆU: NGƯỜI DÙNG
+-- - Không xóa NguoiDung để tránh mất tài khoản đã đăng ký thật
+-- - Luôn đảm bảo tồn tại 2 tài khoản ADMIN cố định
+-- - Mật khẩu cho 2 admin: 123456
 -- ========================================================
-SET IDENTITY_INSERT NguoiDung ON;
-INSERT INTO NguoiDung (MaNguoiDung, HoTen, Email, MatKhauHash, VaiTro, TrangThai)
-VALUES
-(1, N'Quản Trị Viên', 'admin@nateat.com', '$2a$10$wO3mY8lC9JcKkI5kS.bQ8.tW5sFwP.W1p3jJ6xMvO5VnU9rA9k3S2', 'ADMIN', 'ACTIVE'),
-(2, N'Nguyễn Khánh', 'khanh@example.com', '$2a$10$wO3mY8lC9JcKkI5kS.bQ8.tW5sFwP.W1p3jJ6xMvO5VnU9rA9k3S2', 'MEMBER', 'ACTIVE'),
-(3, N'Trần Minh', 'minh@example.com', '$2a$10$wO3mY8lC9JcKkI5kS.bQ8.tW5sFwP.W1p3jJ6xMvO5VnU9rA9k3S2', 'MEMBER', 'ACTIVE'),
-(4, N'Lê Thảo', 'thao@example.com', '$2a$10$wO3mY8lC9JcKkI5kS.bQ8.tW5sFwP.W1p3jJ6xMvO5VnU9rA9k3S2', 'MEMBER', 'ACTIVE');
-SET IDENTITY_INSERT NguoiDung OFF;
+MERGE INTO NguoiDung AS target
+USING (
+  VALUES
+    (1, N'Admin 1', 'admin1@test.com', '$2a$10$wO3mY8lC9JcKkI5kS.bQ8.tW5sFwP.W1p3jJ6xMvO5VnU9rA9k3S2', 'ADMIN', 'ACTIVE'),
+    (2, N'Admin 2', 'admin2@test.com', '$2a$10$wO3mY8lC9JcKkI5kS.bQ8.tW5sFwP.W1p3jJ6xMvO5VnU9rA9k3S2', 'ADMIN', 'ACTIVE'),
+    (3, N'Nguyễn Khánh', 'khanh@example.com', '$2a$10$wO3mY8lC9JcKkI5kS.bQ8.tW5sFwP.W1p3jJ6xMvO5VnU9rA9k3S2', 'MEMBER', 'ACTIVE'),
+    (4, N'Lê Thảo', 'thao@example.com', '$2a$10$wO3mY8lC9JcKkI5kS.bQ8.tW5sFwP.W1p3jJ6xMvO5VnU9rA9k3S2', 'MEMBER', 'ACTIVE')
+) AS source (MaNguoiDung, HoTen, Email, MatKhauHash, VaiTro, TrangThai)
+ON target.MaNguoiDung = source.MaNguoiDung
+WHEN MATCHED THEN
+  UPDATE SET
+    HoTen = source.HoTen,
+    Email = source.Email,
+    MatKhauHash = source.MatKhauHash,
+    VaiTro = source.VaiTro,
+    TrangThai = source.TrangThai
+WHEN NOT MATCHED BY TARGET THEN
+  INSERT (MaNguoiDung, HoTen, Email, MatKhauHash, VaiTro, TrangThai)
+  VALUES (source.MaNguoiDung, source.HoTen, source.Email, source.MatKhauHash, source.VaiTro, source.TrangThai);
 GO
 
 -- ========================================================

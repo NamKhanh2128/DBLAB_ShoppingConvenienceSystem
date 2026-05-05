@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import {
   ShoppingCart,
@@ -26,37 +26,43 @@ import {
 import { useToastContext } from "../../context/ToastContext";
 import { QuickActionModal, AddMealPlanModal, ViewInventoryDetailsModal } from "../../components/common";
 import { useDashboardStats, useMealPlan, useInventory } from "../../hooks/useData";
+import { useAuth } from "../../context/AuthContext";
 
 
-
-const expenseData = [
-  { name: 'T2', value: 450, forecast: 420 },
-  { name: 'T3', value: 680, forecast: 650 },
-  { name: 'T4', value: 520, forecast: 580 },
-  { name: 'T5', value: 720, forecast: 680 },
-  { name: 'T6', value: 890, forecast: 850 },
-  { name: 'T7', value: 650, forecast: 720 },
-  { name: 'CN', value: 940, forecast: 900 },
-];
-
-const categoryData = [
-  { name: 'Rau củ', value: 1200, color: 'var(--success)' },
-  { name: 'Thịt cá', value: 1800, color: 'var(--danger)' },
-  { name: 'Trái cây', value: 850, color: 'var(--food-orange)' },
-  { name: 'Gia vị', value: 450, color: 'var(--purple-deep)' },
-  { name: 'Khác', value: 550, color: 'var(--gold)' },
+const chartColors = [
+  'var(--success)',
+  'var(--danger)',
+  'var(--food-orange)',
+  'var(--purple-deep)',
+  'var(--gold)',
 ];
 
 export function Dashboard() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { success, info, error } = useToastContext();
-  const { stats, loading: statsLoading } = useDashboardStats();
-  const { todayMeals, addMeal } = useMealPlan();
-  const { expiring } = useInventory();
+  const { stats, loading: statsLoading, reload: reloadStats } = useDashboardStats();
+  const { todayMeals, addMeal, loadToday } = useMealPlan();
+  const { expiring, reload: reloadInventory } = useInventory();
 
   const [showQuickAction, setShowQuickAction] = useState(false);
   const [showAddMeal, setShowAddMeal] = useState(false);
   const [selectedInventoryItem, setSelectedInventoryItem] = useState<any>(null);
+
+  const expenseData = useMemo(() => (
+    stats.expenseTrend.map((item: any) => ({
+      name: item.label || item.Ngay || item.name,
+      value: Number(item.value ?? item.TongChiPhi ?? 0),
+    }))
+  ), [stats.expenseTrend]);
+
+  const categoryData = useMemo(() => (
+    stats.categorySpend.map((item: any, index: number) => ({
+      name: item.name || item.DanhMuc || item.category || 'Khác',
+      value: Number(item.value ?? item.TongChiPhi ?? 0),
+      color: chartColors[index % chartColors.length],
+    }))
+  ), [stats.categorySpend]);
 
   const summaryCards = [
     {
@@ -116,6 +122,14 @@ export function Dashboard() {
     location: item.ViTri || '',
   }));
 
+  const mealCards = todayMeals.map((meal: any) => ({
+    id: meal.MaKeHoach ?? meal.id,
+    dish: meal.TenMon || meal.dish || 'Món ăn',
+    time: meal.Buoi || meal.time || 'Hôm nay',
+    emoji: '🍽️',
+    status: meal.TrangThai || meal.status || 'ready',
+  }));
+
 
   const getHour = () => {
     const h = new Date().getHours();
@@ -142,6 +156,7 @@ export function Dashboard() {
         maMon: 1,
         tenMon: data.recipeName || "Món mới",
       });
+      await Promise.all([loadToday(), reloadStats(), reloadInventory()]);
       success("Thêm bữa ăn thành công!", `Đã thêm "${data.recipeName}" vào kế hoạch hôm nay.`);
     } catch (e: any) {
       error("Lỗi thêm bữa ăn", e.message);
@@ -174,7 +189,7 @@ export function Dashboard() {
             Dashboard
           </h1>
           <p className="text-[var(--text-muted)]">
-            Chào {getHour()}, <span className="text-[var(--gold)] font-semibold">Nguyễn Văn A</span>! Đây là tổng quan gia đình hôm nay 🌤️
+            Chào {getHour()}, <span className="text-[var(--gold)] font-semibold">{user?.HoTen || user?.hoTen || 'thành viên'}</span>! Đây là tổng quan gia đình hôm nay.
           </p>
         </div>
 
@@ -266,17 +281,19 @@ export function Dashboard() {
                 </CardDescription>
               </div>
               <div className="text-right">
-                <p className="text-2xl font-black text-[var(--gold)]">4,850k</p>
-                <p className="text-xs text-[var(--success)] font-semibold flex items-center gap-1 justify-end">
+                <p className="text-2xl font-black text-[var(--gold)]">
+                  {stats.totalSpend > 0 ? `${Math.round(stats.totalSpend / 1000).toLocaleString()}k` : '--'}
+                </p>
+                <p className="text-xs text-[var(--text-muted)] font-semibold flex items-center gap-1 justify-end">
                   <ArrowUpRight size={12} strokeWidth={3} />
-                  +12.5%
+                  Dữ liệu thực từ báo cáo
                 </p>
               </div>
             </div>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={260}>
-              <AreaChart data={expenseData}>
+              <AreaChart data={expenseData.length > 0 ? expenseData : [{ name: 'N/A', value: 0 }]}>
                 <defs>
                   <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="var(--gold)" stopOpacity={0.3} />
@@ -334,7 +351,7 @@ export function Dashboard() {
                 <ResponsiveContainer width="100%" height={200}>
                   <PieChart>
                     <Pie
-                      data={categoryData}
+                      data={categoryData.length > 0 ? categoryData : [{ name: 'Chưa có dữ liệu', value: 1, color: 'var(--border-purple)' }]}
                       cx="50%"
                       cy="50%"
                       innerRadius={50}
@@ -342,7 +359,7 @@ export function Dashboard() {
                       paddingAngle={4}
                       dataKey="value"
                     >
-                      {categoryData.map((entry, index) => (
+                      {(categoryData.length > 0 ? categoryData : [{ name: 'Chưa có dữ liệu', value: 1, color: 'var(--border-purple)' }]).map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={entry.color} />
                       ))}
                     </Pie>
@@ -360,7 +377,7 @@ export function Dashboard() {
               </div>
 
               <div className="space-y-3 flex flex-col justify-center">
-                {categoryData.map((category, index) => (
+                {(categoryData.length > 0 ? categoryData : [{ name: 'Chưa có dữ liệu', value: 0, color: 'var(--border-purple)' }]).map((category, index) => (
                   <div key={index} className="flex items-center gap-3">
                     <div
                       className="w-3 h-3 rounded-full flex-shrink-0"
@@ -371,7 +388,7 @@ export function Dashboard() {
                         {category.name}
                       </p>
                       <p className="text-xs text-[var(--text-muted)]">
-                        {category.value.toLocaleString()}k
+                        {category.value > 0 ? `${category.value.toLocaleString()}₫` : '0₫'}
                       </p>
                     </div>
                   </div>
@@ -477,7 +494,7 @@ export function Dashboard() {
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
-            {todayMeals.map((meal, index) => (
+            {mealCards.map((meal) => (
               <div
                 key={meal.id}
                 className="flex items-center gap-3 p-3 bg-[var(--card-bg)] rounded-[var(--radius-sm)] hover:bg-white hover:shadow-md transition-smooth group cursor-pointer"
