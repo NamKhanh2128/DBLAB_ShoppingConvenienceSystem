@@ -24,18 +24,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const isAuthenticated = !!user && !!getToken();
 
+  const persistAuth = (u: any, token: string) => {
+    if (!token) return;
+    setToken(token);
+    setUser(u);
+    setUserState(u);
+    const gid = u?.MaNhom ?? u?.groupId ?? u?.maNhom ?? Number(localStorage.getItem('groupId')) ?? null;
+    if (gid) {
+      setGroupId(Number(gid));
+      localStorage.setItem('groupId', String(gid));
+    }
+  };
+
   const login = async (email: string, password: string) => {
     setIsLoading(true);
     try {
       const res = await authApi.login(email, password);
       const { user: u, token } = res.data;
-      setToken(token);
-      setUser(u);
-      setUserState(u);
-      // Default groupId (will be fetched from family API in production)
-      const gid = 1;
-      setGroupId(gid);
-      localStorage.setItem('groupId', String(gid));
+      persistAuth(u, token);
     } finally {
       setIsLoading(false);
     }
@@ -44,7 +50,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = async (hoTen: string, email: string, password: string) => {
     setIsLoading(true);
     try {
-      await authApi.register(hoTen, email, password);
+      const registerRes = await authApi.register(hoTen, email, password);
+      const token = registerRes.data?.token;
+      const registeredUser = registerRes.data?.user ?? registerRes.data;
+      if (token) {
+        persistAuth(registeredUser, token);
+        return;
+      }
+      const loginRes = await authApi.login(email, password);
+      const { user: u, token: loginToken } = loginRes.data;
+      persistAuth(u, loginToken);
     } finally {
       setIsLoading(false);
     }
@@ -58,16 +73,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setGroupId(null);
   };
 
-  // Refresh user on mount if token exists
+  // Refresh user on mount if token exists without clearing the persisted user during reloads
   useEffect(() => {
     const token = getToken();
-    if (token && !user) {
+    if (token) {
       authApi.me().then(res => {
-        setUser(res.data);
-        setUserState(res.data);
+        const refreshedUser = res.data;
+        setUser(refreshedUser);
+        setUserState(refreshedUser);
+        const gid = refreshedUser?.MaNhom ?? refreshedUser?.groupId ?? refreshedUser?.maNhom ?? groupId;
+        if (gid) {
+          setGroupId(Number(gid));
+          localStorage.setItem('groupId', String(gid));
+        }
       }).catch(() => {
-        removeToken();
-        removeUser();
+        if (!getUser()) {
+          removeToken();
+          removeUser();
+          localStorage.removeItem('groupId');
+          setUserState(null);
+          setGroupId(null);
+        }
       });
     }
   }, []);

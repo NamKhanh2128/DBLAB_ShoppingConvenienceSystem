@@ -33,8 +33,8 @@ export function Register() {
     }
     try {
       await register(hoTen, email, password);
-      success("🎉 Đăng ký thành công!", "Vui lòng đăng nhập để tiếp tục.");
-      navigate("/auth/login");
+      success("🎉 Đăng ký thành công!", "Tài khoản của bạn đã sẵn sàng để sử dụng.");
+      navigate("/app/dashboard");
     } catch (err: any) {
       error("Đăng ký thất bại", err.message || "Email đã được sử dụng");
     }

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Plus, Calendar as CalendarIcon, ChefHat, Trash2, Sparkles, ShoppingCart, Loader2 } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
@@ -10,8 +10,8 @@ import { useMealPlan } from "../../hooks/useData";
 const weekDays = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
 const mealTimes = ["Sáng", "Trưa", "Tối"];
 
-const buoiMap: Record<string, string> = { "Sáng": "SANG", "Trưa": "TRUA", "Tối": "TOI" };
-const buoiRevMap: Record<string, string> = { "SANG": "Sáng", "TRUA": "Trưa", "TOI": "Tối" };
+const buoiMap: Record<string, string> = { "Sáng": "SANG", "Trưa": "TRUA", "Tối": "TOI", "Phụ": "PHU" };
+const buoiRevMap: Record<string, string> = { "SANG": "Sáng", "TRUA": "Trưa", "TOI": "Tối", "PHU": "Phụ" };
 
 // Build grid from API data
 function buildGrid(meals: any[]): Record<string, Record<string, any>> {
@@ -44,6 +44,7 @@ export function MealPlan() {
   const { success, info, warning, error } = useToastContext();
   const { todayMeals, weekMeals, loading, loadToday, loadWeek, addMeal, removeMeal } = useMealPlan();
 
+  const [weekOffset, setWeekOffset] = useState(0);
   const [mealPlan, setMealPlan] = useState<Record<string, Record<string, any>>>({});
   const [showAddMeal, setShowAddMeal] = useState(false);
   const [showGenerate, setShowGenerate] = useState(false);
@@ -51,16 +52,33 @@ export function MealPlan() {
   const [preselectedRecipe, setPreselectedRecipe] = useState("");
   const [viewingMeal, setViewingMeal] = useState<any>(null);
 
-  // Load week on mount
-  useEffect(() => {
+  const fetchMealPlans = async () => {
     const now = new Date();
+    const currentDay = now.getDay();
+    const mondayOffset = currentDay === 0 ? -6 : 1 - currentDay;
     const start = new Date(now);
-    start.setDate(now.getDate() - now.getDay() + 1); // Monday
+    start.setHours(0, 0, 0, 0);
+    start.setDate(now.getDate() + mondayOffset + weekOffset * 7);
     const end = new Date(start);
     end.setDate(start.getDate() + 6);
     const fmt = (d: Date) => d.toISOString().split('T')[0];
-    loadWeek(fmt(start), fmt(end));
-  }, []);
+    const data = await loadWeek(fmt(start), fmt(end));
+    const todayKey = now.toISOString().split('T')[0];
+    const todayItems = (data || []).filter((item: any) => {
+      const itemDate = new Date(item.Ngay).toISOString().split('T')[0];
+      return itemDate === todayKey;
+    });
+    return { data: data || [], todayItems };
+  };
+
+  useEffect(() => {
+    fetchMealPlans().then(({ todayItems }) => {
+      loadToday();
+      if (todayItems.length === 0 && weekOffset === 0) {
+        return;
+      }
+    });
+  }, [weekOffset]);
 
   useEffect(() => {
     setMealPlan(buildGrid(weekMeals));
@@ -78,14 +96,16 @@ export function MealPlan() {
       return;
     }
     try {
-      const now = new Date();
+      const selectedDate = data.date || new Date().toISOString().split('T')[0];
       await addMeal({
-        ngay: now.toISOString().split('T')[0],
-        buoi: addingTo ? buoiMap[addingTo.time] || "TOI" : "TOI",
-        maMon: 1, // default, ideally map from recipe
+        ngay: selectedDate,
+        buoi: buoiMap[data.mealType] || (addingTo ? buoiMap[addingTo.time] : "TOI") || "TOI",
+        maMon: data.recipeId || 1,
         tenMon: mealName,
-        ghiChu: data.note || "",
+        ghiChu: data.notes || data.note || "",
       });
+      await fetchMealPlans();
+      await loadToday();
       success("✅ Thêm bữa ăn thành công!", `"${mealName}" đã được lên kế hoạch.`);
       setAddingTo(null);
       setShowAddMeal(false);
@@ -94,17 +114,18 @@ export function MealPlan() {
 
   const handleRemoveMeal = async (day: string, time: string, mealName: string, id?: number) => {
     try {
-      if (id) await removeMeal(id);
-      // optimistic update
-      setMealPlan(prev => ({
-        ...prev,
-        [day]: { ...prev[day], [time]: null }
-      }));
+      if (id) {
+        await removeMeal(id);
+        await fetchMealPlans();
+        await loadToday();
+      }
       success(`🗑️ Đã xóa "${mealName}"`, `Đã xóa khỏi bữa ${time} ${day}.`);
     } catch (e: any) { error("Lỗi", e.message); }
   };
 
-  const handleGenerate = (data: any) => {
+  const handleGenerate = async (data: any) => {
+    await fetchMealPlans();
+    await loadToday();
     success("🤖 Tạo thực đơn thành công!", "Thực đơn tuần đã được tạo tự động.");
     setShowGenerate(false);
   };
@@ -138,6 +159,12 @@ export function MealPlan() {
           </p>
         </div>
         <div className="flex items-center gap-3 self-start md:self-auto">
+          <Button variant="outline" className="border-[var(--purple-deep)] text-[var(--purple-deep)] hover:bg-[var(--purple-deep)] hover:text-white rounded-[var(--radius-btn)] font-semibold transition-smooth" onClick={() => setWeekOffset(weekOffset - 1)}>
+            Tuần trước
+          </Button>
+          <Button variant="outline" className="border-[var(--purple-deep)] text-[var(--purple-deep)] hover:bg-[var(--purple-deep)] hover:text-white rounded-[var(--radius-btn)] font-semibold transition-smooth" onClick={() => setWeekOffset(weekOffset + 1)}>
+            Tuần sau
+          </Button>
           <Button variant="outline" className="border-[var(--purple-deep)] text-[var(--purple-deep)] hover:bg-[var(--purple-deep)] hover:text-white rounded-[var(--radius-btn)] font-semibold transition-smooth" onClick={() => setShowGenerate(true)}>
             <Sparkles className="w-4 h-4 mr-2" />Tạo tự động
           </Button>
@@ -284,6 +311,7 @@ export function MealPlan() {
         isOpen={showAddMeal}
         onClose={() => { setShowAddMeal(false); setAddingTo(null); setPreselectedRecipe(""); }}
         onSubmit={handleAddMeal}
+        onSuccess={async () => { await fetchMealPlans(); await loadToday(); }}
         initialRecipeName={preselectedRecipe}
       />
       <GenerateMealPlanModal isOpen={showGenerate} onClose={() => setShowGenerate(false)} onGenerate={handleGenerate} />

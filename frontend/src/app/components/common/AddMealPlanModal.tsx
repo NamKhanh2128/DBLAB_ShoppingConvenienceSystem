@@ -10,8 +10,10 @@ import Modal from "./Modal";
 interface AddMealPlanModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (data: any) => void;
+  onSubmit: (data: any) => void | Promise<void>;
+  onSuccess?: () => void | Promise<void>;
   initialRecipeName?: string;
+  initialRecipeId?: number | string;
 }
 
 const mealTypes = ["Sáng", "Trưa", "Tối", "Phụ"];
@@ -30,7 +32,9 @@ export function AddMealPlanModal({
   isOpen,
   onClose,
   onSubmit,
+  onSuccess,
   initialRecipeName = "",
+  initialRecipeId,
 }: AddMealPlanModalProps) {
   const [formData, setFormData] = useState({
     date: "",
@@ -48,11 +52,12 @@ export function AddMealPlanModal({
         recipeName: initialRecipeName || prev.recipeName,
       }));
     }
-  }, [isOpen, initialRecipeName]);
+  }, [isOpen, initialRecipeName, initialRecipeId]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(formData);
+    await onSubmit({ ...formData, recipeId: initialRecipeId });
+    await onSuccess?.();
     setFormData({
       date: "",
       mealType: "Trưa",
