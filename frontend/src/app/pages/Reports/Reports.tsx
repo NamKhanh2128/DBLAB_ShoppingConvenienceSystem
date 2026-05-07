@@ -20,12 +20,29 @@ export function Reports() {
     waste: Math.round((r.TongLangPhi || 0) / 1000),
   }));
 
-  const categoryData = [
-    { name: 'Rau củ', value: 35, color: '#22C55E' },
-    { name: 'Thịt cá', value: 30, color: '#EF4444' },
-    { name: 'Trái cây', value: 20, color: '#F97316' },
-    { name: 'Khác', value: 15, color: '#3B82F6' },
-  ];
+  // Build category data from summary or reports (real API data)
+  const categoryData = (() => {
+    // Try to get from summary.categorySpend first
+    const catRaw: any[] = summary?.categorySpend || summary?.ChiTietDanhMuc || [];
+    if (catRaw.length > 0) {
+      return catRaw.map((item: any, index: number) => ({
+        name: item.name || item.DanhMuc || item.category || 'Khác',
+        value: Number(item.value ?? item.TongChiPhi ?? item.SoLuong ?? 0),
+        color: categoryColors[index % categoryColors.length],
+      })).filter((c: any) => c.value > 0);
+    }
+    // Fallback: aggregate from reports list
+    const catMap: Record<string, number> = {};
+    reports.forEach((r: any) => {
+      const cat = r.DanhMuc || r.category || 'Khác';
+      catMap[cat] = (catMap[cat] || 0) + (r.TongChiPhi || 0);
+    });
+    return Object.entries(catMap).map(([name, value], index) => ({
+      name,
+      value: Math.round(value),
+      color: categoryColors[index % categoryColors.length],
+    })).filter((c) => c.value > 0);
+  })();
 
   if (loading) {
     return (

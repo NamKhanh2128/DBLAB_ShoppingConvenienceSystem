@@ -11,6 +11,7 @@ import { useToastContext } from "../../context/ToastContext";
 import { Modal } from "../../components/common";
 import { useAuth } from "../../context/AuthContext";
 import { usersApi } from "../../services/api";
+import { useLanguage } from "../../context/LanguageContext";
 
 export function Settings() {
   const { success, error, info, warning } = useToastContext();
@@ -46,8 +47,8 @@ export function Settings() {
     weeklyReport: false,
   });
 
-  // Language
-  const [language, setLanguage] = useState("vi");
+  // Language — connected to global LanguageContext
+  const { language, setLanguage } = useLanguage();
 
   // Password modal
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -135,6 +136,8 @@ export function Settings() {
   };
 
   const handleSaveLanguage = () => {
+    // Already saved reactively via setLanguage, but call again to ensure persistence
+    setLanguage(language as 'vi' | 'en');
     success("🌐 Đã lưu ngôn ngữ!", `Ngôn ngữ hiển thị: ${language === 'vi' ? 'Tiếng Việt' : 'English'}.`);
   };
 
@@ -342,7 +345,7 @@ export function Settings() {
               {[{ value: "vi", label: "🇻🇳 Tiếng Việt" }, { value: "en", label: "🇺🇸 English" }].map(lang => (
                 <button
                   key={lang.value}
-                  onClick={() => setLanguage(lang.value)}
+                  onClick={() => setLanguage(lang.value as 'vi' | 'en')}
                   className={`p-3 rounded-[var(--radius-sm)] border-2 font-semibold text-sm transition-smooth ${language === lang.value
                     ? 'border-[var(--gold)] bg-[var(--gold)]/5 text-[var(--gold)]'
                     : 'border-[var(--border-light)] text-[var(--text-muted)] hover:border-[var(--gold)]/50'

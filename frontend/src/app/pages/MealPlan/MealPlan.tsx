@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Plus, Calendar as CalendarIcon, ChefHat, Trash2, Sparkles, ShoppingCart, Loader2 } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Plus, Calendar as CalendarIcon, ChefHat, Trash2, Sparkles, ShoppingCart, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
@@ -14,6 +14,14 @@ const buoiMap: Record<string, string> = { "Sáng": "SANG", "Trưa": "TRUA", "T�
 const buoiRevMap: Record<string, string> = { "SANG": "Sáng", "TRUA": "Trưa", "TOI": "Tối", "PHU": "Phụ" };
 
 // Build grid from API data
+// BUG FIX: new Date("YYYY-MM-DD") parses as UTC midnight → getDay() wrong in UTC+7.
+// Fix: parse the date string directly (split by '-') as LOCAL date.
+function parseDateLocal(dateStr: string): Date {
+  // dateStr is "YYYY-MM-DD" (from SQL Date field)
+  const [y, m, d] = dateStr.split('T')[0].split('-').map(Number);
+  return new Date(y, m - 1, d); // local midnight, correct day-of-week
+}
+
 function buildGrid(meals: any[]): Record<string, Record<string, any>> {
   const grid: Record<string, Record<string, any>> = {};
   weekDays.forEach(d => {
@@ -21,13 +29,16 @@ function buildGrid(meals: any[]): Record<string, Record<string, any>> {
     mealTimes.forEach(t => { grid[d][t] = null; });
   });
   meals.forEach(meal => {
-    const ngay = new Date(meal.Ngay);
-    const dow = ngay.getDay(); // 0=Sun, 1=Mon...
-    const dayKeys = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
+    const ngayStr: string = meal.Ngay || '';
+    if (!ngayStr) return;
+    const ngay = parseDateLocal(ngayStr);
+    const dow = ngay.getDay(); // 0=Sun, 1=Mon ... correct in local time
+    const dayKeys = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
     const dayKey = dayKeys[dow];
     const timeKey = buoiRevMap[meal.Buoi] || meal.Buoi;
     if (grid[dayKey] && timeKey) {
-      grid[dayKey][timeKey] = { name: meal.TenMon || "Món ăn", emoji: "🍽️", id: meal.MaKH };
+      // BUG FIX: use MaKeHoach (PK) not MaKH (undefined)
+      grid[dayKey][timeKey] = { name: meal.TenMon || 'Món ăn', emoji: '🍽️', id: meal.MaKeHoach };
     }
   });
   return grid;
@@ -52,33 +63,35 @@ export function MealPlan() {
   const [preselectedRecipe, setPreselectedRecipe] = useState("");
   const [viewingMeal, setViewingMeal] = useState<any>(null);
 
-  const fetchMealPlans = async () => {
+  // BUG FIX: memoize fetchMealPlans so it's stable and always sees latest weekOffset
+  const fetchMealPlans = useCallback(async () => {
     const now = new Date();
-    const currentDay = now.getDay();
+    const currentDay = now.getDay(); // local day of week
     const mondayOffset = currentDay === 0 ? -6 : 1 - currentDay;
-    const start = new Date(now);
-    start.setHours(0, 0, 0, 0);
-    start.setDate(now.getDate() + mondayOffset + weekOffset * 7);
-    const end = new Date(start);
-    end.setDate(start.getDate() + 6);
-    const fmt = (d: Date) => d.toISOString().split('T')[0];
-    const data = await loadWeek(fmt(start), fmt(end));
-    const todayKey = now.toISOString().split('T')[0];
-    const todayItems = (data || []).filter((item: any) => {
-      const itemDate = new Date(item.Ngay).toISOString().split('T')[0];
-      return itemDate === todayKey;
-    });
-    return { data: data || [], todayItems };
-  };
+    const startDate = new Date(now);
+    startDate.setHours(0, 0, 0, 0);
+    startDate.setDate(now.getDate() + mondayOffset + weekOffset * 7);
+    const endDate = new Date(startDate);
+    endDate.setDate(startDate.getDate() + 6);
+    // BUG FIX: format dates as local YYYY-MM-DD (not UTC via toISOString)
+    const fmt = (d: Date) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    };
+    const startStr = fmt(startDate);
+    const endStr = fmt(endDate);
+    const [weekData] = await Promise.all([
+      loadWeek(startStr, endStr),
+      loadToday(),
+    ]);
+    return weekData || [];
+  }, [weekOffset, loadWeek, loadToday]);
 
   useEffect(() => {
-    fetchMealPlans().then(({ todayItems }) => {
-      loadToday();
-      if (todayItems.length === 0 && weekOffset === 0) {
-        return;
-      }
-    });
-  }, [weekOffset]);
+    fetchMealPlans();
+  }, [fetchMealPlans]);
 
   useEffect(() => {
     setMealPlan(buildGrid(weekMeals));
@@ -92,41 +105,44 @@ export function MealPlan() {
   const handleAddMeal = async (data: any) => {
     const mealName = data.recipeName;
     if (!mealName) {
-      warning("Vui lòng chọn món ăn", "Bạn cần chọn món ăn trước khi thêm.");
+      warning('Vui lòng chọn món ăn', 'Bạn cần chọn món ăn trước khi thêm.');
       return;
     }
     try {
-      const selectedDate = data.date || new Date().toISOString().split('T')[0];
+      // Format selected date as local YYYY-MM-DD
+      const selectedDate = data.date || (() => {
+        const n = new Date();
+        return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`;
+      })();
       await addMeal({
         ngay: selectedDate,
-        buoi: buoiMap[data.mealType] || (addingTo ? buoiMap[addingTo.time] : "TOI") || "TOI",
+        buoi: buoiMap[data.mealType] || (addingTo ? buoiMap[addingTo.time] : 'TOI') || 'TOI',
         maMon: data.recipeId || 1,
         tenMon: mealName,
-        ghiChu: data.notes || data.note || "",
+        ghiChu: data.notes || data.note || '',
       });
       await fetchMealPlans();
-      await loadToday();
-      success("✅ Thêm bữa ăn thành công!", `"${mealName}" đã được lên kế hoạch.`);
+      success('✅ Thêm bữa ăn thành công!', `"${mealName}" đã được lên kế hoạch.`);
       setAddingTo(null);
       setShowAddMeal(false);
-    } catch (e: any) { error("Lỗi", e.message); }
+    } catch (e: any) { error('Lỗi', e.message); }
   };
 
   const handleRemoveMeal = async (day: string, time: string, mealName: string, id?: number) => {
+    if (!id) {
+      error('Không thể xóa', 'Không tìm thấy ID bữa ăn để xóa.');
+      return;
+    }
     try {
-      if (id) {
-        await removeMeal(id);
-        await fetchMealPlans();
-        await loadToday();
-      }
+      await removeMeal(id);
+      await fetchMealPlans();
       success(`🗑️ Đã xóa "${mealName}"`, `Đã xóa khỏi bữa ${time} ${day}.`);
-    } catch (e: any) { error("Lỗi", e.message); }
+    } catch (e: any) { error('Lỗi xóa', e.message); }
   };
 
-  const handleGenerate = async (data: any) => {
+  const handleGenerate = async (_data: any) => {
     await fetchMealPlans();
-    await loadToday();
-    success("🤖 Tạo thực đơn thành công!", "Thực đơn tuần đã được tạo tự động.");
+    success('🤖 Tạo thực đơn thành công!', 'Thực đơn tuần đã được tạo tự động.');
     setShowGenerate(false);
   };
 
@@ -159,11 +175,27 @@ export function MealPlan() {
           </p>
         </div>
         <div className="flex items-center gap-3 self-start md:self-auto">
-          <Button variant="outline" className="border-[var(--purple-deep)] text-[var(--purple-deep)] hover:bg-[var(--purple-deep)] hover:text-white rounded-[var(--radius-btn)] font-semibold transition-smooth" onClick={() => setWeekOffset(weekOffset - 1)}>
-            Tuần trước
+          <Button
+            variant="outline"
+            className="border-[var(--purple-deep)] text-[var(--purple-deep)] hover:bg-[var(--purple-deep)] hover:text-white rounded-[var(--radius-btn)] font-semibold transition-smooth"
+            onClick={() => setWeekOffset(prev => prev - 1)}
+          >
+            <ChevronLeft className="w-4 h-4 mr-1" />Tuần trước
           </Button>
-          <Button variant="outline" className="border-[var(--purple-deep)] text-[var(--purple-deep)] hover:bg-[var(--purple-deep)] hover:text-white rounded-[var(--radius-btn)] font-semibold transition-smooth" onClick={() => setWeekOffset(weekOffset + 1)}>
-            Tuần sau
+          <Button
+            variant="outline"
+            className="border-[var(--purple-deep)] text-[var(--purple-deep)] hover:bg-[var(--purple-deep)] hover:text-white rounded-[var(--radius-btn)] font-semibold transition-smooth"
+            onClick={() => setWeekOffset(0)}
+            disabled={weekOffset === 0}
+          >
+            Hôm nay
+          </Button>
+          <Button
+            variant="outline"
+            className="border-[var(--purple-deep)] text-[var(--purple-deep)] hover:bg-[var(--purple-deep)] hover:text-white rounded-[var(--radius-btn)] font-semibold transition-smooth"
+            onClick={() => setWeekOffset(prev => prev + 1)}
+          >
+            Tuần sau<ChevronRight className="w-4 h-4 ml-1" />
           </Button>
           <Button variant="outline" className="border-[var(--purple-deep)] text-[var(--purple-deep)] hover:bg-[var(--purple-deep)] hover:text-white rounded-[var(--radius-btn)] font-semibold transition-smooth" onClick={() => setShowGenerate(true)}>
             <Sparkles className="w-4 h-4 mr-2" />Tạo tự động
@@ -186,7 +218,7 @@ export function MealPlan() {
         <CardHeader className="bg-gradient-purple text-white py-4">
           <CardTitle className="flex items-center gap-2 text-white">
             <CalendarIcon className="w-5 h-5" />
-            Tuần này
+            {weekOffset === 0 ? "Tuần này" : weekOffset === 1 ? "Tuần sau" : weekOffset === -1 ? "Tuần trước" : `Tuần +${weekOffset}`}
             <Badge className="ml-auto bg-white/20 text-white border-none">{totalMeals}/{totalSlots} bữa</Badge>
           </CardTitle>
         </CardHeader>
@@ -309,9 +341,9 @@ export function MealPlan() {
       {/* Modals */}
       <AddMealPlanModal
         isOpen={showAddMeal}
-        onClose={() => { setShowAddMeal(false); setAddingTo(null); setPreselectedRecipe(""); }}
+        onClose={() => { setShowAddMeal(false); setAddingTo(null); setPreselectedRecipe(''); }}
         onSubmit={handleAddMeal}
-        onSuccess={async () => { await fetchMealPlans(); await loadToday(); }}
+        onSuccess={fetchMealPlans}
         initialRecipeName={preselectedRecipe}
       />
       <GenerateMealPlanModal isOpen={showGenerate} onClose={() => setShowGenerate(false)} onGenerate={handleGenerate} />

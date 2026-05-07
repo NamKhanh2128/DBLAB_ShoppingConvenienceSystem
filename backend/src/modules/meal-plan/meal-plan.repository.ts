@@ -9,25 +9,35 @@ export class MealPlanRepository {
       .input('s', sql.Date, startDate)
       .input('e', sql.Date, endDate)
       .query(`
-        SELECT kh.*, m.TenMon, m.CongThuc
+        SELECT kh.MaKeHoach, kh.MaNhom, kh.Ngay, kh.Buoi, kh.MaMon, kh.GhiChu,
+               m.TenMon, m.CongThuc
         FROM KeHoachBuaAn kh
-        JOIN MonAn m ON kh.MaMon = m.MaMon
+        LEFT JOIN MonAn m ON kh.MaMon = m.MaMon
         WHERE kh.MaNhom = @g AND kh.Ngay BETWEEN @s AND @e
-        ORDER BY kh.Ngay, 
+        ORDER BY kh.Ngay,
           CASE kh.Buoi WHEN 'SANG' THEN 1 WHEN 'TRUA' THEN 2 WHEN 'TOI' THEN 3 END
       `);
     return result.recordset;
   }
 
-  async getToday(groupId: number) {
+  async getToday(groupId: number, clientDate?: string) {
     const pool = await getPool();
-    const result = await pool.request()
-      .input('g', sql.Int, groupId)
-      .query(`
-        SELECT kh.*, m.TenMon, m.CongThuc
+    const req = pool.request().input('g', sql.Int, groupId);
+    let whereDate: string;
+    if (clientDate) {
+      // Client sends today's date as YYYY-MM-DD in their local timezone
+      req.input('today', sql.Date, clientDate);
+      whereDate = 'kh.Ngay = @today';
+    } else {
+      // Fallback: use server date (only correct if server is same timezone)
+      whereDate = 'kh.Ngay = CAST(GETDATE() AS DATE)';
+    }
+    const result = await req.query(`
+        SELECT kh.MaKeHoach, kh.MaNhom, kh.Ngay, kh.Buoi, kh.MaMon, kh.GhiChu,
+               m.TenMon, m.CongThuc
         FROM KeHoachBuaAn kh
-        JOIN MonAn m ON kh.MaMon = m.MaMon
-        WHERE kh.MaNhom = @g AND kh.Ngay = CAST(GETDATE() AS DATE)
+        LEFT JOIN MonAn m ON kh.MaMon = m.MaMon
+        WHERE kh.MaNhom = @g AND ${whereDate}
         ORDER BY CASE kh.Buoi WHEN 'SANG' THEN 1 WHEN 'TRUA' THEN 2 WHEN 'TOI' THEN 3 END
       `);
     return result.recordset;

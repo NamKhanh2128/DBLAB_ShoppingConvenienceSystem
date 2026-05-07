@@ -13,7 +13,11 @@ export class MealPlanController {
     } catch (e) { next(e); }
   }
   async getToday(req: Request, res: Response, next: NextFunction) {
-    try { return createSuccess(res, await svc.getToday(Number(req.query.groupId))); } catch (e) { next(e); }
+    try {
+      // Accept optional client-local date to avoid UTC vs UTC+7 mismatch
+      const clientDate = req.query.date ? String(req.query.date) : undefined;
+      return createSuccess(res, await svc.getToday(Number(req.query.groupId), clientDate));
+    } catch (e) { next(e); }
   }
   async create(req: Request, res: Response, next: NextFunction) {
     try { return createSuccess(res, await svc.create(req.body), 'Thêm kế hoạch thành công', 201); } catch (e) { next(e); }

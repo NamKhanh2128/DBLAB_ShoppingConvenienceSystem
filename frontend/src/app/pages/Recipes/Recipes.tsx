@@ -5,8 +5,8 @@ import { Input } from "../../components/ui/input";
 import { Card, CardContent } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
 import { useToastContext } from "../../context/ToastContext";
-import { AddRecipeModal, ViewRecipeModal, FilterModal } from "../../components/common";
-import { useRecipes } from "../../hooks/useData";
+import { AddRecipeModal, ViewRecipeModal, FilterModal, AddMealPlanModal } from "../../components/common";
+import { useRecipes, useMealPlan } from "../../hooks/useData";
 
 const difficultyColors: Record<string, string> = {
   "Dễ": "var(--success)",
@@ -15,6 +15,23 @@ const difficultyColors: Record<string, string> = {
 };
 
 function mapRecipe(raw: any) {
+  // Parse ingredients from CongThuc field (stored as "name - quantity" per line)
+  const ingredientLines: string[] = raw.CongThuc
+    ? raw.CongThuc.split('\n').filter(Boolean)
+    : [];
+  const ingredients = ingredientLines.map((line: string) => {
+    const dashIdx = line.lastIndexOf(' - ');
+    if (dashIdx !== -1) {
+      return { name: line.substring(0, dashIdx).trim(), quantity: line.substring(dashIdx + 3).trim() };
+    }
+    return { name: line.trim(), quantity: '' };
+  });
+
+  // Parse steps from HuongDan field (one step per line)
+  const steps: string[] = raw.HuongDan
+    ? raw.HuongDan.split('\n').filter(Boolean)
+    : [];
+
   return {
     id: raw.MaMon,
     name: raw.TenMon,
@@ -25,9 +42,9 @@ function mapRecipe(raw: any) {
     difficulty: raw.DoKho || "Trung bình",
     category: raw.DanhMuc || "Khác",
     rating: raw.DiemDanhGia || 4.0,
-    description: raw.MoTa || raw.CongThuc || "",
-    ingredients: [],
-    steps: raw.HuongDan ? raw.HuongDan.split('\n').filter(Boolean) : [],
+    description: raw.MoTa || "",
+    ingredients,
+    steps,
     _raw: raw,
   };
 }
@@ -35,6 +52,7 @@ function mapRecipe(raw: any) {
 export function Recipes() {
   const { success, info, error } = useToastContext();
   const { recipes: rawRecipes, loading, addRecipe, deleteRecipe } = useRecipes();
+  const { addMeal, loadToday } = useMealPlan();
 
   const recipes = useMemo(() => rawRecipes.map(mapRecipe), [rawRecipes]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -42,6 +60,8 @@ export function Recipes() {
   const [showAddRecipe, setShowAddRecipe] = useState(false);
   const [showFilter, setShowFilter] = useState(false);
   const [viewRecipe, setViewRecipe] = useState<any>(null);
+  const [addToPlanRecipe, setAddToPlanRecipe] = useState<{ id: number; name: string } | null>(null);
+  void info; // silence unused warning
 
   const categories = useMemo(() =>
     ["Tất cả", ...Array.from(new Set(recipes.map(r => r.category)))],
@@ -59,15 +79,31 @@ export function Recipes() {
 
   const handleAddRecipe = async (data: any) => {
     try {
+      // Serialize ingredients as "name - quantity" per line (not [object Object])
+      const congThuc = Array.isArray(data.ingredients)
+        ? data.ingredients
+            .filter((ing: any) => ing && (ing.name || ing))
+            .map((ing: any) => typeof ing === 'string' ? ing : `${ing.name} - ${ing.quantity}`)
+            .join('\n')
+        : (data.description || '');
+
+      // Serialize steps as plain text lines
+      const huongDan = Array.isArray(data.steps)
+        ? data.steps
+            .filter((s: any) => s)
+            .map((s: any) => typeof s === 'string' ? s : (s.description || String(s)))
+            .join('\n')
+        : (data.instructions || '');
+
       await addRecipe({
         tenMon: data.name || "Công thức mới",
-        congThuc: data.ingredients?.join('\n') || data.description || "",
-        huongDan: data.steps?.join('\n') || data.instructions || "",
-        moTa: data.description || "",
-        thoiGian: parseInt(data.cookingTime || "30"),
-        khauPhan: parseInt(data.servings || "4"),
-        doKho: data.difficulty || "Dễ",
-        danhMuc: data.cuisine || data.category || "Khác",
+        congThuc,
+        huongDan,
+        moTa: data.description || '',
+        thoiGian: parseInt(data.cookingTime || '30'),
+        khauPhan: parseInt(data.servings || '4'),
+        doKho: data.difficulty || 'Dễ',
+        danhMuc: data.cuisine || data.category || 'Khác',
       });
       success("✅ Thêm công thức thành công!", `"${data.name}" đã được lưu vào bộ sưu tập.`);
     } catch (e: any) { error("Lỗi", e.message); }
@@ -77,6 +113,26 @@ export function Recipes() {
     try {
       await deleteRecipe(id);
       success(`🗑️ Đã xóa "${name}"`, "Công thức đã được xóa.");
+    } catch (e: any) { error("Lỗi", e.message); }
+  };
+
+  const handleAddToMealPlan = (recipeId: number, recipeName: string) => {
+    setViewRecipe(null);
+    setAddToPlanRecipe({ id: recipeId, name: recipeName });
+  };
+
+  const handleMealPlanSubmit = async (data: any) => {
+    try {
+      await addMeal({
+        ngay: data.date || new Date().toISOString().split('T')[0],
+        buoi: data.mealType === 'Sáng' ? 'SANG' : data.mealType === 'Trưa' ? 'TRUA' : data.mealType === 'Phụ' ? 'PHU' : 'TOI',
+        maMon: addToPlanRecipe?.id || 1,
+        tenMon: addToPlanRecipe?.name || data.recipeName,
+        ghiChu: data.notes || '',
+      });
+      await loadToday();
+      success("✅ Đã thêm vào kế hoạch!", `"${addToPlanRecipe?.name}" đã được lên kế hoạch.`);
+      setAddToPlanRecipe(null);
     } catch (e: any) { error("Lỗi", e.message); }
   };
 
@@ -194,7 +250,16 @@ export function Recipes() {
       {/* Modals */}
       <AddRecipeModal isOpen={showAddRecipe} onClose={() => setShowAddRecipe(false)} onSubmit={handleAddRecipe} />
       <FilterModal isOpen={showFilter} onClose={() => setShowFilter(false)} onApply={() => setShowFilter(false)} type="recipe" />
-      {viewRecipe && <ViewRecipeModal isOpen={!!viewRecipe} onClose={() => setViewRecipe(null)} recipe={viewRecipe} />}
+      {viewRecipe && <ViewRecipeModal isOpen={!!viewRecipe} onClose={() => setViewRecipe(null)} recipe={viewRecipe} onAddToMealPlan={handleAddToMealPlan} />}
+      {addToPlanRecipe && (
+        <AddMealPlanModal
+          isOpen={!!addToPlanRecipe}
+          onClose={() => setAddToPlanRecipe(null)}
+          onSubmit={handleMealPlanSubmit}
+          initialRecipeName={addToPlanRecipe.name}
+          initialRecipeId={addToPlanRecipe.id}
+        />
+      )}
     </div>
   );
 }

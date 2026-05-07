@@ -1,4 +1,4 @@
-import { X, Utensils, Clock } from "lucide-react";
+import { X, Utensils, Clock, Loader2 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -6,6 +6,7 @@ import { Label } from "../ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Textarea } from "../ui/textarea";
 import Modal from "./Modal";
+import { recipesApi } from "../../services/api";
 
 interface AddMealPlanModalProps {
   isOpen: boolean;
@@ -17,16 +18,6 @@ interface AddMealPlanModalProps {
 }
 
 const mealTypes = ["Sáng", "Trưa", "Tối", "Phụ"];
-const recipesList = [
-  "Phở bò",
-  "Cơm gà",
-  "Bún chả",
-  "Mì xào hải sản",
-  "Canh chua",
-  "Gỏi cuốn",
-  "Bánh mì",
-  "Cháo lòng"
-];
 
 export function AddMealPlanModal({
   isOpen,
@@ -40,28 +31,48 @@ export function AddMealPlanModal({
     date: "",
     mealType: "Trưa",
     recipeName: "",
+    recipeId: initialRecipeId ?? "",
     servings: "4",
     cookingTime: "",
     notes: "",
   });
+  const [apiRecipes, setApiRecipes] = useState<{ id: number; name: string }[]>([]);
+  const [loadingRecipes, setLoadingRecipes] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       setFormData(prev => ({
         ...prev,
         recipeName: initialRecipeName || prev.recipeName,
+        recipeId: initialRecipeId ?? prev.recipeId,
       }));
+      // Fetch real recipes from API
+      setLoadingRecipes(true);
+      recipesApi.getAll()
+        .then(res => setApiRecipes((res.data || []).map((r: any) => ({ id: r.MaMon, name: r.TenMon }))))
+        .catch(() => {})
+        .finally(() => setLoadingRecipes(false));
     }
   }, [isOpen, initialRecipeName, initialRecipeId]);
 
+  const handleRecipeSelect = (value: string) => {
+    const found = apiRecipes.find(r => String(r.id) === value);
+    setFormData(prev => ({
+      ...prev,
+      recipeName: found ? found.name : value,
+      recipeId: found ? found.id : "",
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await onSubmit({ ...formData, recipeId: initialRecipeId });
+    await onSubmit({ ...formData, recipeId: formData.recipeId || initialRecipeId });
     await onSuccess?.();
     setFormData({
       date: "",
       mealType: "Trưa",
       recipeName: "",
+      recipeId: "",
       servings: "4",
       cookingTime: "",
       notes: "",
@@ -130,16 +141,34 @@ export function AddMealPlanModal({
           <Label className="text-[var(--text-dark)] font-semibold mb-2 block">
             Món ăn
           </Label>
-          <Select value={formData.recipeName} onValueChange={(value) => setFormData({ ...formData, recipeName: value })}>
-            <SelectTrigger className="rounded-[var(--radius-sm)] border-[var(--border-light)]">
-              <SelectValue placeholder="Chọn món ăn" />
-            </SelectTrigger>
-            <SelectContent>
-              {recipesList.map((recipe) => (
-                <SelectItem key={recipe} value={recipe}>{recipe}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {loadingRecipes ? (
+            <div className="flex items-center gap-2 h-10 px-3 border rounded-[var(--radius-sm)] border-[var(--border-light)]">
+              <Loader2 className="w-4 h-4 animate-spin text-[var(--text-muted)]" />
+              <span className="text-[var(--text-muted)] text-sm">Đang tải...</span>
+            </div>
+          ) : apiRecipes.length > 0 ? (
+            <Select
+              value={formData.recipeId ? String(formData.recipeId) : ""}
+              onValueChange={handleRecipeSelect}
+            >
+              <SelectTrigger className="rounded-[var(--radius-sm)] border-[var(--border-light)]">
+                <SelectValue placeholder={formData.recipeName || "Chọn món ăn"} />
+              </SelectTrigger>
+              <SelectContent>
+                {apiRecipes.map((recipe) => (
+                  <SelectItem key={recipe.id} value={String(recipe.id)}>{recipe.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Input
+              value={formData.recipeName}
+              onChange={(e) => setFormData({ ...formData, recipeName: e.target.value })}
+              placeholder="Nhập tên món ăn"
+              className="rounded-[var(--radius-sm)] border-[var(--border-light)] focus-visible:ring-[var(--purple)] focus-visible:border-[var(--purple)]"
+              required
+            />
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-3">

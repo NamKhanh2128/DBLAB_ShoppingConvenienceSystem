@@ -161,8 +161,12 @@ export const recipesApi = {
 // MEAL PLAN
 // ────────────────────────────────────────────────
 export const mealPlanApi = {
-  getToday: (groupId: number) =>
-    request<{ success: boolean; data: any[] }>(`/meal-plan/today?groupId=${groupId}`),
+  // Send local date to avoid UTC vs UTC+7 mismatch on the server
+  getToday: (groupId: number) => {
+    const n = new Date();
+    const localDate = `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`;
+    return request<{ success: boolean; data: any[] }>(`/meal-plan/today?groupId=${groupId}&date=${localDate}`);
+  },
 
   getByDateRange: (groupId: number, start: string, end: string) =>
     request<{ success: boolean; data: any[] }>(
@@ -188,6 +192,24 @@ export const familyApi = {
 
   getMembers: (groupId: number) =>
     request<{ success: boolean; data: any[] }>(`/family/${groupId}/members`),
+
+  getInvites: (groupId: number) =>
+    request<{ success: boolean; data: any[] }>(`/family/${groupId}/invites`),
+
+  generateInvite: (groupId: number, maxUses?: number) =>
+    request<{ success: boolean; data: any }>(
+      `/family/${groupId}/invites`,
+      { method: 'POST', body: JSON.stringify({ maxUses: maxUses ?? 1 }) }
+    ),
+
+  revokeInvite: (groupId: number, inviteId: number) =>
+    request(`/family/${groupId}/invites/${inviteId}`, { method: 'DELETE' }),
+
+  joinFamily: (inviteCode: string) =>
+    request<{ success: boolean; data: any }>(
+      '/family/join',
+      { method: 'POST', body: JSON.stringify({ inviteCode }) }
+    ),
 
   create: (name: string) =>
     request<{ success: boolean; data: any }>(

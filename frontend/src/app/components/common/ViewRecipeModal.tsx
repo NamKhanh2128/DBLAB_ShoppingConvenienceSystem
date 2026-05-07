@@ -8,12 +8,14 @@ interface ViewRecipeModalProps {
   isOpen: boolean;
   onClose: () => void;
   recipe?: any;
+  onAddToMealPlan?: (recipeId: number, recipeName: string) => void;
 }
 
 export function ViewRecipeModal({
   isOpen,
   onClose,
-  recipe
+  recipe,
+  onAddToMealPlan,
 }: ViewRecipeModalProps) {
   if (!recipe) return null;
 
@@ -125,13 +127,15 @@ export function ViewRecipeModal({
               "Trụng bánh phở, cho vào tô",
               "Múc nước dùng, cho thịt bò, rắc hành lá và ngò gai",
               "Thưởng thức khi còn nóng"
-            ]).map((step: string, index: number) => (
+            ]).map((step: any, index: number) => (
               <div key={index} className="flex gap-4">
                 <div className="w-8 h-8 rounded-full bg-gradient-gold text-[var(--text-dark)] flex items-center justify-center font-bold text-sm shrink-0">
                   {index + 1}
                 </div>
                 <div className="flex-1">
-                  <p className="text-[var(--text-dark)] leading-relaxed">{step}</p>
+                  <p className="text-[var(--text-dark)] leading-relaxed">
+                    {typeof step === "string" ? step : (step.description || step.MoTa || JSON.stringify(step))}
+                  </p>
                 </div>
               </div>
             ))}
@@ -163,20 +167,27 @@ export function ViewRecipeModal({
           </Button>
         </div>
 
-        <div className="flex gap-3">
-          <Button
-            variant="outline"
-            onClick={onClose}
-            className="flex-1 rounded-[var(--radius-btn)] border-[var(--border-light)] hover:bg-[var(--card-bg)] font-semibold"
-          >
-            Đóng
-          </Button>
-          <Button
-            className="flex-1 bg-gradient-gold text-[var(--text-dark)] font-bold rounded-[var(--radius-btn)] shadow-[var(--shadow-btn)] hover-lift transition-smooth"
-          >
-            Thêm vào kế hoạch
-          </Button>
-        </div>
+          <div className="flex gap-3">
+            <Button
+              variant="outline"
+              onClick={onClose}
+              className="flex-1 rounded-[var(--radius-btn)] border-[var(--border-light)] hover:bg-[var(--card-bg)] font-semibold"
+            >
+              Đóng
+            </Button>
+            <Button
+              className="flex-1 bg-gradient-gold text-[var(--text-dark)] font-bold rounded-[var(--radius-btn)] shadow-[var(--shadow-btn)] hover-lift transition-smooth"
+              onClick={() => {
+                if (onAddToMealPlan && recipe) {
+                  onAddToMealPlan(recipe.id, recipe.name);
+                  onClose();
+                }
+              }}
+              disabled={!onAddToMealPlan}
+            >
+              Thêm vào kế hoạch
+            </Button>
+          </div>
       </div>
     </Modal>
   );
