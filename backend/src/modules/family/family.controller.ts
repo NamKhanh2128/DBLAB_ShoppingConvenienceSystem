@@ -14,7 +14,7 @@ const svc = new FamilyService();
 export class FamilyController {
 
   // GET /api/v1/family/me — danh sách nhóm của tôi
-  async getMyFamilies(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  async getMyFamilies(req: any, res: Response, next: NextFunction) {
     try {
       const data = await svc.getUserFamilies(req.user.id);
       return createSuccess(res, data);
@@ -22,7 +22,7 @@ export class FamilyController {
   }
 
   // GET /api/v1/family/:groupId/members — danh sách thành viên
-  async getMembers(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  async getMembers(req: any, res: Response, next: NextFunction) {
     try {
       const groupId = Number(req.params.groupId);
       const data = await svc.getMembers(groupId, req.user.id);
@@ -31,7 +31,7 @@ export class FamilyController {
   }
 
   // GET /api/v1/family/:groupId/invites — danh sách mã mời (leader only qua service)
-  async getInvites(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  async getInvites(req: any, res: Response, next: NextFunction) {
     try {
       const groupId = Number(req.params.groupId);
       const data = await svc.getGroupInvites(groupId, req.user.id);
@@ -40,7 +40,7 @@ export class FamilyController {
   }
 
   // POST /api/v1/family — tạo nhóm mới
-  async create(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  async create(req: any, res: Response, next: NextFunction) {
     try {
       const dto: CreateFamilyDto = {
         name: req.body.name,
@@ -53,7 +53,7 @@ export class FamilyController {
   }
 
   // POST /api/v1/family/:groupId/invites — tạo mã mời
-  async generateInvite(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  async generateInvite(req: any, res: Response, next: NextFunction) {
     try {
       const groupId = Number(req.params.groupId);
       const dto: GenerateInviteDto = { maxUses: req.body.maxUses };
@@ -63,7 +63,7 @@ export class FamilyController {
   }
 
   // POST /api/v1/family/join — dùng mã mời để tham gia
-  async joinFamily(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  async joinFamily(req: any, res: Response, next: NextFunction) {
     try {
       const { inviteCode }: JoinFamilyDto = req.body;
       const data = await svc.joinFamily(req.user.id, inviteCode);
@@ -72,7 +72,7 @@ export class FamilyController {
   }
 
   // DELETE /api/v1/family/:groupId/members/:userId — kick thành viên hoặc tự rời
-  async removeMember(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  async removeMember(req: any, res: Response, next: NextFunction) {
     try {
       const groupId = Number(req.params.groupId);
       const targetUserId = Number(req.params.userId);
@@ -82,14 +82,48 @@ export class FamilyController {
   }
 
   // DELETE /api/v1/family/:groupId/invites/:inviteId — thu hồi mã mời
-  async revokeInvite(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  async revokeInvite(req: any, res: Response, next: NextFunction) {
     try {
       const groupId = Number(req.params.groupId);
-      const inviteId = Number(req.params.inviteId); // Ép kiểu an toàn
+      const inviteId = String(req.params.inviteId); // Ép kiểu chuỗi tuyệt đối an toàn
 
       // Truyền đủ groupId, inviteId và userId xuống tầng logic
       await svc.revokeInvite(groupId, inviteId, req.user.id);
       return createSuccess(res, null, 'Đã thu hồi mã mời');
+    } catch (e) { next(e); }
+  }
+
+  // PUT /api/v1/family/:groupId/transfer-leadership — chuyển nhượng quyền chủ hộ
+  async transferLeadership(req: any, res: Response, next: NextFunction) {
+    try {
+      const groupId = Number(req.params.groupId);
+      const { newLeaderId } = req.body;
+      if (!newLeaderId) throw { statusCode: 400, message: 'Thiếu thông tin người nhận chuyển nhượng' };
+
+      await svc.transferGroupLeadership(groupId, Number(newLeaderId), req.user.id);
+      return createSuccess(res, null, 'Chuyển nhượng quyền chủ hộ gia đình thành công');
+    } catch (e) { next(e); }
+  }
+
+  // PUT /api/v1/family/:groupId/info — cập nhật thông tin nhóm gia đình OCC
+  async updateFamilyInfo(req: any, res: Response, next: NextFunction) {
+    try {
+      const groupId = Number(req.params.groupId);
+      const { name, description, lastSeenUpdatedAt } = req.body;
+      if (!name) throw { statusCode: 400, message: 'Tên nhóm gia đình không được để trống' };
+      if (!lastSeenUpdatedAt) throw { statusCode: 400, message: 'Thiếu mã thời gian cập nhật gần nhất' };
+
+      const data = await svc.updateGroupInfo(groupId, name, description, lastSeenUpdatedAt, req.user.id);
+      return createSuccess(res, data, 'Cập nhật thông tin gia đình thành công');
+    } catch (e) { next(e); }
+  }
+
+  // GET /api/v1/family/:groupId/notifications — lấy thông báo hoạt động realtime của gia đình
+  async getNotifications(req: any, res: Response, next: NextFunction) {
+    try {
+      const groupId = Number(req.params.groupId);
+      const data = await svc.getNotifications(groupId, req.user.id);
+      return createSuccess(res, data);
     } catch (e) { next(e); }
   }
 }

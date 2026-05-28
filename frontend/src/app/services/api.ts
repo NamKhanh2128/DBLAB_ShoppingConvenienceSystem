@@ -1,10 +1,11 @@
 // Base API configuration
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
 
-// Token helpers
-export const getToken = (): string | null => localStorage.getItem('token');
-export const setToken = (token: string) => localStorage.setItem('token', token);
-export const removeToken = () => localStorage.removeItem('token');
+// Token helpers (Lưu trữ Access Token trong RAM để chống XSS)
+let memoryToken: string | null = null;
+export const getToken = (): string | null => memoryToken;
+export const setToken = (token: string) => { memoryToken = token; };
+export const removeToken = () => { memoryToken = null; };
 
 export const getUser = () => {
   const u = localStorage.getItem('user');
@@ -13,19 +14,79 @@ export const getUser = () => {
 export const setUser = (user: any) => localStorage.setItem('user', JSON.stringify(user));
 export const removeUser = () => localStorage.removeItem('user');
 
+// Cơ chế xử lý làm mới song song (Concurrent Refreshing)
+let isRefreshing = false;
+let refreshSubscribers: ((token: string) => void)[] = [];
+
+const subscribeTokenRefresh = (cb: (token: string) => void) => {
+  refreshSubscribers.push(cb);
+};
+
+const onRefreshed = (token: string) => {
+  refreshSubscribers.forEach(cb => cb(token));
+  refreshSubscribers = [];
+};
+
+async function handleRefresh(): Promise<string | null> {
+  try {
+    // Gọi API làm mới, cookie refreshToken (HttpOnly) tự động được đính kèm bởi trình duyệt
+    const res = await fetch(`${BASE_URL}/auth/refresh`, { method: 'POST' });
+    if (!res.ok) throw new Error('Refresh failed');
+    const data = await res.json();
+    const newToken = data.data.token;
+    setToken(newToken);
+    return newToken;
+  } catch (err) {
+    removeToken();
+    removeUser();
+    return null;
+  }
+}
+
 // Base fetch wrapper
 async function request<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const token = getToken();
+  let token = getToken();
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...((options.headers as Record<string, string>) || {}),
   };
 
-  const res = await fetch(`${BASE_URL}${endpoint}`, { ...options, headers });
+  let res = await fetch(`${BASE_URL}${endpoint}`, { ...options, headers });
+  
+  // Tự động làm mới token ngầm (Silent Refresh) nếu bị lỗi 401 Unauthorized
+  if (res.status === 401 && endpoint !== '/auth/login' && endpoint !== '/auth/refresh') {
+    if (!isRefreshing) {
+      isRefreshing = true;
+      const newToken = await handleRefresh();
+      isRefreshing = false;
+      if (newToken) {
+        onRefreshed(newToken);
+      } else {
+        localStorage.removeItem('groupId');
+        window.location.href = '/login?expired=true';
+        throw new Error('Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại.');
+      }
+    }
+
+    // Chờ cho đến khi tiến trình refresh đầu tiên hoàn tất
+    const retryPromise = new Promise<string>((resolve) => {
+      subscribeTokenRefresh((newToken) => resolve(newToken));
+    });
+
+    const newToken = await retryPromise;
+    const retryHeaders: HeadersInit = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${newToken}`,
+      ...((options.headers as Record<string, string>) || {}),
+    };
+    
+    res = await fetch(`${BASE_URL}${endpoint}`, { ...options, headers: retryHeaders });
+  }
+
   const data = await res.json();
 
   if (!res.ok) {
@@ -138,6 +199,9 @@ export const inventoryApi = {
 
   remove: (id: number) =>
     request(`/inventory/${id}`, { method: 'DELETE' }),
+
+  getLogs: (groupId: number) =>
+    request<{ success: boolean; data: any[] }>(`/inventory/${groupId}/logs`),
 };
 
 // ────────────────────────────────────────────────
@@ -225,6 +289,21 @@ export const familyApi = {
 
   removeMember: (groupId: number, userId: number) =>
     request(`/family/${groupId}/members/${userId}`, { method: 'DELETE' }),
+
+  transferLeadership: (groupId: number, newLeaderId: number) =>
+    request(`/family/${groupId}/transfer-leadership`, {
+      method: 'PUT',
+      body: JSON.stringify({ newLeaderId }),
+    }),
+
+  updateInfo: (groupId: number, data: { name: string; description: string | null; lastSeenUpdatedAt: string }) =>
+    request<{ success: boolean; data: any }>(`/family/${groupId}/info`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  getNotifications: (groupId: number) =>
+    request<{ success: boolean; data: any[] }>(`/family/${groupId}/notifications`),
 };
 
 // ────────────────────────────────────────────────

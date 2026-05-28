@@ -82,10 +82,30 @@ export class FamilyService {
     const isSelf = targetUserId === requesterId;
     if (!isLeader && !isSelf) throw { statusCode: 403, message: 'Không có quyền thực hiện thao tác này' };
 
-    // Trưởng nhóm không được tự rời (cần chuyển quyền trước)
-    if (isSelf && isLeader) throw { statusCode: 400, message: 'Trưởng nhóm cần chuyển quyền trước khi rời nhóm' };
+    // Trưởng nhóm không được tự rời (cần chuyển quyền trước) nếu vẫn còn người khác
+    if (isSelf && isLeader) {
+      const memberCount = await this.repo.getMemberCount(groupId);
+      if (memberCount > 1) {
+        throw { statusCode: 400, message: 'Trưởng nhóm cần bàn giao/chuyển quyền chủ hộ trước khi rời gia đình' };
+      }
+    }
+
+    // Lấy tên thành viên rời/kick trước khi xóa khỏi nhóm
+    const members = await this.repo.getMembers(groupId);
+    const targetUser = members.find(m => m.MaNguoiDung === targetUserId);
+    const name = targetUser ? targetUser.HoTen : 'Thành viên';
 
     await this.repo.removeMember(groupId, targetUserId);
+
+    // Ghi nhận nhật ký hoạt động
+    const logContent = isSelf 
+      ? `${name} đã tự rời khỏi gia đình.` 
+      : `${name} đã bị Trưởng nhóm mời ra khỏi gia đình.`;
+    
+    const remainingCount = members.length - 1;
+    if (remainingCount > 0) {
+      await this.repo.logActivity(groupId, logContent, 'LEAVE');
+    }
   }
 
   // ── INVITE GENERATION ──────────────────────────────────────────────────────
@@ -105,7 +125,7 @@ export class FamilyService {
       throw { statusCode: 403, message: 'Chỉ trưởng nhóm mới được tạo mã mời' };
 
     const code = generateInviteCode();
-    const maxUses = dto.maxUses ?? 1;
+    const maxUses = Math.min(Math.max(dto.maxUses ?? 1, 1), 100);
     const expiresAt = new Date(Date.now() + INVITE_EXPIRY_MS);
 
     const invite = await this.repo.createInvite(groupId, requesterId, code, maxUses, expiresAt);
@@ -140,7 +160,71 @@ export class FamilyService {
    * Toàn bộ validation + insert diễn ra trong 1 DB transaction (xem repository).
    */
   async joinFamily(userId: number, inviteCode: string) {
-    // Repository xử lý toàn bộ: lock → validate → insert → commit
-    return this.repo.joinFamilyTransaction(inviteCode, userId);
+    const res = await this.repo.joinFamilyTransaction(inviteCode, userId);
+    
+    // Lấy thông tin user vừa join để log
+    const members = await this.repo.getMembers(res.MaNhom);
+    const joinedUser = members.find(m => m.MaNguoiDung === userId);
+    const name = joinedUser ? joinedUser.HoTen : 'Thành viên mới';
+
+    await this.repo.logActivity(res.MaNhom, `${name} đã gia nhập gia đình qua liên kết mời.`, 'JOIN');
+    return res;
+  }
+
+  // ── LEADERSHIP TRANSFER ───────────────────────────────────────────────────
+  async transferGroupLeadership(groupId: number, newLeaderId: number, requesterId: number) {
+    const group = await this.repo.getGroupById(groupId);
+    if (!group) throw { statusCode: 404, message: 'Nhóm gia đình không tồn tại' };
+
+    // 1. Chỉ trưởng nhóm hiện tại mới được quyền chuyển nhượng
+    if (group.TruongNhom !== requesterId) {
+      throw { statusCode: 403, message: 'Chỉ Trưởng nhóm mới có quyền chuyển nhượng quyền chủ hộ' };
+    }
+
+    // 2. Không được chuyển cho chính mình
+    if (newLeaderId === requesterId) {
+      throw { statusCode: 400, message: 'Bạn đã là Trưởng nhóm hiện tại rồi' };
+    }
+
+    // 3. New leader phải là thành viên hiện tại của nhóm
+    const isMember = await this.repo.isMember(groupId, newLeaderId);
+    if (!isMember) {
+      throw { statusCode: 400, message: 'Người nhận chuyển quyền phải là thành viên trong gia đình' };
+    }
+
+    const members = await this.repo.getMembers(groupId);
+    const oldLeader = members.find(m => m.MaNguoiDung === requesterId);
+    const newLeader = members.find(m => m.MaNguoiDung === newLeaderId);
+
+    const oldName = oldLeader ? oldLeader.HoTen : 'Trưởng nhóm cũ';
+    const newName = newLeader ? newLeader.HoTen : 'Trưởng nhóm mới';
+
+    await this.repo.transferLeadershipTransaction(groupId, requesterId, newLeaderId, oldName, newName);
+    return { success: true };
+  }
+
+  // ── UPDATE GROUP INFO OCC ─────────────────────────────────────────────────
+  async updateGroupInfo(groupId: number, name: string, desc: string | null, lastSeenUpdatedAt: string, requesterId: number) {
+    const group = await this.repo.getGroupById(groupId);
+    if (!group) throw { statusCode: 404, message: 'Nhóm gia đình không tồn tại' };
+
+    if (group.TruongNhom !== requesterId) {
+      throw { statusCode: 403, message: 'Chỉ Trưởng nhóm mới có quyền cập nhật thông tin nhóm' };
+    }
+
+    await this.repo.updateGroupInfoOCC(groupId, name.trim(), desc ? desc.trim() : null, lastSeenUpdatedAt);
+    
+    // Log hoạt động cập nhật
+    await this.repo.logActivity(groupId, `Thông tin gia đình đã được cập nhật bởi Trưởng nhóm.`, 'INFO_UPDATE');
+
+    return this.repo.getGroupById(groupId);
+  }
+
+  // ── GET FAMILY NOTIFICATIONS ──────────────────────────────────────────────
+  async getNotifications(groupId: number, requesterId: number) {
+    const isMember = await this.repo.isMember(groupId, requesterId);
+    if (!isMember) throw { statusCode: 403, message: 'Bạn không phải là thành viên của nhóm gia đình này' };
+
+    return this.repo.getNotificationsByGroup(groupId);
   }
 }

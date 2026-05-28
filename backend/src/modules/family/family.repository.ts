@@ -153,10 +153,41 @@ export class FamilyRepository {
 
   async removeMember(groupId: number, userId: number): Promise<void> {
     const pool = await getPool();
-    await pool.request()
-      .input('g', sql.Int, groupId)
-      .input('u', sql.Int, userId)
-      .query(`DELETE FROM ThanhVienNhom WHERE MaNhom = @g AND MaNguoiDung = @u`);
+    const tx = new sql.Transaction(pool);
+    try {
+      await tx.begin();
+
+      // 1. Thu hồi các mã mời của người dùng này trong nhóm
+      await tx.request()
+        .input('g', sql.Int, groupId)
+        .input('u', sql.Int, userId)
+        .query(`UPDATE FamilyInvites SET IsDeleted = 1 WHERE MaNhom = @g AND TaoBoiId = @u`);
+
+      // 2. Xóa khỏi bảng ThanhVienNhom
+      await tx.request()
+        .input('g', sql.Int, groupId)
+        .input('u', sql.Int, userId)
+        .query(`DELETE FROM ThanhVienNhom WHERE MaNhom = @g AND MaNguoiDung = @u`);
+
+      // 3. Đếm số thành viên còn lại
+      const countRes = await tx.request()
+        .input('g', sql.Int, groupId)
+        .query(`SELECT COUNT(*) AS Total FROM ThanhVienNhom WHERE MaNhom = @g`);
+
+      const remaining = countRes.recordset[0].Total;
+
+      if (remaining === 0) {
+        // Nếu không còn ai, đánh dấu xóa nhóm (soft-delete) và bỏ trống trưởng nhóm
+        await tx.request()
+          .input('g', sql.Int, groupId)
+          .query(`UPDATE NhomGiaDinh SET IsDeleted = 1, TruongNhom = NULL, NgayCapNhat = GETUTCDATE() WHERE MaNhom = @g`);
+      }
+
+      await tx.commit();
+    } catch (err) {
+      await tx.rollback();
+      throw err;
+    }
   }
 
   // ── INVITE ─────────────────────────────────────────────────────────────────
@@ -248,14 +279,22 @@ export class FamilyRepository {
       if (new Date(invite.ExpiresAt) < new Date()) throw { statusCode: 410, message: 'Mã mời đã hết hạn (48h)' };
       if (invite.UsedCount >= invite.MaxUses)   throw { statusCode: 409, message: `Mã mời đã đạt giới hạn ${invite.MaxUses} lần dùng` };
 
-      // BƯỚC 3: Kiểm tra đã là thành viên chưa
-      const memberRes = await tx.request()
-        .input('groupId', sql.Int, invite.MaNhom)
-        .input('userId',  sql.Int, userId)
-        .query(`SELECT 1 FROM ThanhVienNhom WHERE MaNhom = @groupId AND MaNguoiDung = @userId`);
+      // BƯỚC 3: Kiểm tra xem user có đang thuộc nhóm nào khác trong hệ thống không
+      const userGroupCheck = await tx.request()
+        .input('userIdForGroupCheck', sql.Int, userId)
+        .query(`SELECT MaNhom FROM ThanhVienNhom WHERE MaNguoiDung = @userIdForGroupCheck`);
 
-      if (memberRes.recordset.length > 0)
-        throw { statusCode: 409, message: 'Bạn đã là thành viên của nhóm này' };
+      if (userGroupCheck.recordset.length > 0) {
+        const currentGroupId = userGroupCheck.recordset[0].MaNhom;
+        if (currentGroupId === invite.MaNhom) {
+          throw { statusCode: 409, message: 'Bạn đã là thành viên của nhóm gia đình này rồi' };
+        } else {
+          throw {
+            statusCode: 400,
+            message: 'Bạn đang là thành viên của một nhóm gia đình khác. Vui lòng rời nhóm hiện tại trước khi tham gia nhóm mới.'
+          };
+        }
+      }
 
       // BƯỚC 4: Kiểm tra giới hạn số thành viên
       const countRes = await tx.request()
@@ -285,5 +324,97 @@ export class FamilyRepository {
       await tx.rollback();
       throw error;
     }
+  }
+
+  // ─── LEADERSHIP TRANSFER ───────────────────────────────────────────────────
+  async transferLeadershipTransaction(
+    groupId: number,
+    oldLeaderId: number,
+    newLeaderId: number,
+    oldLeaderName: string,
+    newLeaderName: string
+  ): Promise<void> {
+    const pool = await getPool();
+    const tx = new sql.Transaction(pool);
+    try {
+      await tx.begin();
+
+      // 1. Cập nhật trưởng nhóm trong NhomGiaDinh
+      await tx.request()
+        .input('groupId', sql.Int, groupId)
+        .input('newLeaderId', sql.Int, newLeaderId)
+        .query(`UPDATE NhomGiaDinh SET TruongNhom = @newLeaderId, NgayCapNhat = GETUTCDATE() WHERE MaNhom = @groupId`);
+
+      // 2. Cập nhật vai trò mới thành LEADER trong ThanhVienNhom
+      await tx.request()
+        .input('groupId', sql.Int, groupId)
+        .input('newLeaderId', sql.Int, newLeaderId)
+        .query(`UPDATE ThanhVienNhom SET VaiTro = 'LEADER' WHERE MaNhom = @groupId AND MaNguoiDung = @newLeaderId`);
+
+      // 3. Cập nhật vai trò cũ thành MEMBER trong ThanhVienNhom
+      await tx.request()
+        .input('groupId', sql.Int, groupId)
+        .input('oldLeaderId', sql.Int, oldLeaderId)
+        .query(`UPDATE ThanhVienNhom SET VaiTro = 'MEMBER' WHERE MaNhom = @groupId AND MaNguoiDung = @oldLeaderId`);
+
+      // 4. Tạo log hoạt động
+      const logContent = `${oldLeaderName} đã chuyển quyền Trưởng nhóm cho ${newLeaderName}.`;
+      await tx.request()
+        .input('groupId', sql.Int, groupId)
+        .input('content', sql.NVarChar(500), logContent)
+        .query(`INSERT INTO FamilyNotifications (MaNhom, NoiDung, Loai) VALUES (@groupId, @content, 'TRANSFER')`);
+
+      await tx.commit();
+    } catch (err) {
+      await tx.rollback();
+      throw err;
+    }
+  }
+
+  // ─── OPTIMISTIC CONCURRENCY CONTROL (OCC) UPDATE ───────────────────────────
+  async updateGroupInfoOCC(
+    groupId: number,
+    name: string,
+    desc: string | null,
+    lastSeenUpdatedAt: string
+  ): Promise<void> {
+    const pool = await getPool();
+    const result = await pool.request()
+      .input('groupId', sql.Int, groupId)
+      .input('name', sql.NVarChar(100), name)
+      .input('desc', sql.NVarChar(500), desc)
+      .input('lastSeen', sql.DateTime2, new Date(lastSeenUpdatedAt))
+      .query(`
+        UPDATE NhomGiaDinh 
+        SET TenNhom = @name, MoTa = @desc, NgayCapNhat = GETUTCDATE()
+        WHERE MaNhom = @groupId AND (NgayCapNhat = @lastSeen OR NgayCapNhat IS NULL)
+      `);
+
+    if (result.rowsAffected[0] === 0) {
+      throw { statusCode: 409, message: 'Thông tin nhóm gia đình đã được cập nhật bởi một thành viên khác. Vui lòng tải lại trang để xem thông tin mới.' };
+    }
+  }
+
+  // ─── FAMILY NOTIFICATIONS / ACTIVITY LOG ───────────────────────────────────
+  async getNotificationsByGroup(groupId: number): Promise<any[]> {
+    const pool = await getPool();
+    const result = await pool.request()
+      .input('groupId', sql.Int, groupId)
+      .query(`
+        SELECT Id, NoiDung, Loai, NgayTao 
+        FROM FamilyNotifications 
+        WHERE MaNhom = @groupId 
+        ORDER BY NgayTao DESC
+      `);
+    return result.recordset;
+  }
+
+  async logActivity(groupId: number, content: string, type: string): Promise<void> {
+    const pool = await getPool();
+    await pool.request()
+      .input('groupId', sql.Int, groupId)
+      .input('content', sql.NVarChar(500), content)
+      .input('type', sql.NVarChar(50), type)
+      .query(`INSERT INTO FamilyNotifications (MaNhom, NoiDung, Loai) VALUES (@groupId, @content, @type)`);
   }
 }

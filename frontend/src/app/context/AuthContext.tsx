@@ -73,29 +73,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setGroupId(null);
   };
 
-  // Refresh user on mount if token exists without clearing the persisted user during reloads
+  // Tự động làm mới phiên đăng nhập ngầm khi người dùng F5 tải lại trang
   useEffect(() => {
-    const token = getToken();
-    if (token) {
-      authApi.me().then(res => {
-        const refreshedUser = res.data;
-        setUser(refreshedUser);
-        setUserState(refreshedUser);
-        const gid = refreshedUser?.MaNhom ?? refreshedUser?.groupId ?? refreshedUser?.maNhom ?? groupId;
-        if (gid) {
-          setGroupId(Number(gid));
-          localStorage.setItem('groupId', String(gid));
+    const initAuth = async () => {
+      try {
+        const checkRes = await fetch('http://localhost:5000/api/v1/auth/refresh', { method: 'POST' });
+        if (checkRes.ok) {
+          const refreshData = await checkRes.ok ? await checkRes.json() : null;
+          if (refreshData?.data?.token) {
+            setToken(refreshData.data.token);
+            const meRes = await authApi.me();
+            const refreshedUser = meRes.data;
+            setUser(refreshedUser);
+            setUserState(refreshedUser);
+            const gid = refreshedUser?.MaNhom ?? refreshedUser?.groupId ?? refreshedUser?.maNhom ?? groupId;
+            if (gid) {
+              setGroupId(Number(gid));
+              localStorage.setItem('groupId', String(gid));
+            }
+            return;
+          }
         }
-      }).catch(() => {
-        if (!getUser()) {
-          removeToken();
-          removeUser();
-          localStorage.removeItem('groupId');
-          setUserState(null);
-          setGroupId(null);
-        }
-      });
-    }
+      } catch (e) {
+        console.warn('Không thể khôi phục phiên đăng nhập ngầm:', e);
+      }
+
+      // Dọn dẹp nếu không thể tự động khôi phục
+      if (!getUser()) {
+        removeToken();
+        removeUser();
+        localStorage.removeItem('groupId');
+        setUserState(null);
+        setGroupId(null);
+      }
+    };
+
+    initAuth();
   }, []);
 
   const updateUser = (newUser: any) => {

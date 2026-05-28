@@ -6,16 +6,19 @@ import { ShoppingCart, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "../../../context/AuthContext";
 import { useToastContext } from "../../../context/ToastContext";
+import { familyApi } from "../../../services/api";
 
 export function Register() {
   const navigate = useNavigate();
   const { register, isLoading } = useAuth();
-  const { success, error } = useToastContext();
+  const { success, error, info } = useToastContext();
 
   const [hoTen, setHoTen] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+
+  const inviteCode = new URLSearchParams(window.location.search).get('inviteCode');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,13 +30,25 @@ export function Register() {
       error("Mật khẩu không khớp", "Vui lòng kiểm tra lại mật khẩu xác nhận");
       return;
     }
-    if (password.length < 6) {
-      error("Mật khẩu quá ngắn", "Mật khẩu phải có ít nhất 6 ký tự");
+    if (password.length < 8) {
+      error("Mật khẩu quá ngắn", "Mật khẩu phải có ít nhất 8 ký tự, gồm cả chữ hoa, chữ thường và số");
       return;
     }
     try {
       await register(hoTen, email, password);
-      success("🎉 Đăng ký thành công!", "Tài khoản của bạn đã sẵn sàng để sử dụng.");
+      
+      if (inviteCode) {
+        info("Đang tự động gia nhập...", "Đang kết nối tài khoản mới của bạn với nhóm gia đình...");
+        try {
+          await familyApi.joinFamily(inviteCode);
+          success("🎉 Gia nhập gia đình thành công!", "Tài khoản của bạn đã được kết nối với gia đình.");
+        } catch (joinErr: any) {
+          error("Không thể tự động gia nhập gia đình", joinErr.message || "Mã mời đã hết hạn hoặc không tồn tại.");
+        }
+      } else {
+        success("🎉 Đăng ký thành công!", "Tài khoản của bạn đã sẵn sàng để sử dụng.");
+      }
+      
       navigate("/app/dashboard");
     } catch (err: any) {
       error("Đăng ký thất bại", err.message || "Email đã được sử dụng");
@@ -57,6 +72,11 @@ export function Register() {
       </div>
 
       <div className="bg-white rounded-3xl shadow-xl p-8 border border-gray-100">
+        {inviteCode && (
+          <div className="mb-5 p-4 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-800 font-medium">
+            💡 Bạn đang sử dụng liên kết mời gia đình. Hệ thống sẽ tự động liên kết tài khoản mới của bạn với nhóm ngay sau khi đăng ký!
+          </div>
+        )}
         <form className="space-y-5" onSubmit={handleSubmit}>
           <div className="space-y-2">
             <Label htmlFor="fullname">Họ và tên</Label>
