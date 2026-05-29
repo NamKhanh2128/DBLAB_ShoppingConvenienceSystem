@@ -34,6 +34,15 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
       return createError(res, 'Phiên đăng nhập không hợp lệ hoặc đã hết hạn', 401);
     }
 
+    // [BẢO MẬT ADMIN] Enforce thời hạn tối đa 2 giờ cho tài khoản Admin/Moderator
+    if (decoded.role === 'ADMIN' || decoded.role === 'MODERATOR') {
+      const iat = (decoded as any).iat || 0;
+      const nowInSecs = Math.floor(Date.now() / 1000);
+      if (nowInSecs - iat > 7200) { // 2 giờ
+        return createError(res, 'Phiên làm việc của Quản trị viên đã hết hạn (giới hạn tối đa 2 giờ để bảo mật). Vui lòng đăng nhập lại.', 401);
+      }
+    }
+
     // Kiểm tra chéo mật khẩu thay đổi gần nhất trong DB để vô hiệu hóa token cũ
     const pool = await getPool();
     const result = await pool.request()

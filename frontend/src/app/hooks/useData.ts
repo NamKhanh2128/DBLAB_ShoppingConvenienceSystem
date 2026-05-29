@@ -117,7 +117,28 @@ export function useShopping() {
     await loadItems(listId);
   };
 
-  return { lists, items, loading, loadLists, loadItems, createList, deleteList, addItem, toggleItem, updateItem, deleteItem };
+  /** Hoàn thành mua sắm + tự động nhập kho toàn bộ items đã mua */
+  const completeAndRestock = async (listId: number) => {
+    const res = await shoppingApi.completeAndRestock(listId);
+    await loadLists();
+    await loadItems(listId);
+    return res.data;
+  };
+
+  /** Gom nhóm items trùng tên+đơn vị trong danh sách */
+  const mergeDuplicates = async (listId: number) => {
+    const res = await shoppingApi.mergeDuplicates(listId);
+    await loadItems(listId);
+    return res.data;
+  };
+
+  return {
+    lists, items, loading,
+    loadLists, loadItems,
+    createList, deleteList,
+    addItem, toggleItem, updateItem, deleteItem,
+    completeAndRestock, mergeDuplicates,
+  };
 }
 
 // ────────────────────────────────────────────────
@@ -177,25 +198,30 @@ export function useMealPlan() {
 // RECIPES HOOK
 // ────────────────────────────────────────────────
 export function useRecipes() {
+  const { groupId } = useAuth();
   const [recipes, setRecipes] = useState<any[]>([]);
+  const [suggestions, setSuggestions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [suggestLoading, setSuggestLoading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await recipesApi.getAll();
+      // Truyền groupId để lấy cả system recipes + recipes riêng của nhóm
+      const res = await recipesApi.getAll(groupId ?? undefined);
       setRecipes(res.data || []);
     } catch (e) {
       console.error('Recipes load error:', e);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [groupId]);
 
   useEffect(() => { load(); }, [load]);
 
   const addRecipe = async (data: any) => {
-    await recipesApi.create(data);
+    // Tự động gắn maNhom vào body khi tạo
+    await recipesApi.create({ ...data, maNhom: groupId });
     await load();
   };
 
@@ -209,7 +235,33 @@ export function useRecipes() {
     await load();
   };
 
-  return { recipes, loading, addRecipe, updateRecipe, deleteRecipe, reload: load };
+  /** Đánh dấu "Đã nấu xong" → tự động trừ kho */
+  const cookRecipe = async (id: number, soKhauPhan: number) => {
+    if (!groupId) throw new Error('Chưa chọn nhóm gia đình');
+    const res = await recipesApi.cook(id, soKhauPhan, groupId);
+    return res.data;
+  };
+
+  /** Gợi ý công thức theo nguyên liệu có sẵn trong kho */
+  const loadSuggestions = async () => {
+    if (!groupId) return;
+    setSuggestLoading(true);
+    try {
+      const res = await recipesApi.suggest(groupId);
+      setSuggestions(res.data || []);
+    } catch (e) {
+      console.error('Suggestions load error:', e);
+    } finally {
+      setSuggestLoading(false);
+    }
+  };
+
+  return {
+    recipes, suggestions, loading, suggestLoading,
+    addRecipe, updateRecipe, deleteRecipe,
+    cookRecipe, loadSuggestions,
+    reload: load,
+  };
 }
 
 // ────────────────────────────────────────────────
@@ -220,14 +272,17 @@ export function useReports() {
   const [reports, setReports] = useState<any[]>([]);
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [filters, setFilters] = useState<{ startDate?: string; endDate?: string }>({});
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (customFilters?: { startDate?: string; endDate?: string }) => {
     if (!groupId) return;
     setLoading(true);
+    const activeFilters = customFilters || filters;
     try {
+      const tzOffset = new Date().getTimezoneOffset();
       const [repRes, sumRes] = await Promise.all([
         reportsApi.getAll(groupId),
-        reportsApi.getSummary(groupId),
+        reportsApi.getSummary(groupId, tzOffset, activeFilters.startDate, activeFilters.endDate),
       ]);
       setReports(repRes.data || []);
       setSummary(sumRes.data);
@@ -236,11 +291,18 @@ export function useReports() {
     } finally {
       setLoading(false);
     }
+  }, [groupId, filters]);
+
+  useEffect(() => {
+    load();
   }, [groupId]);
 
-  useEffect(() => { load(); }, [load]);
+  const applyFilters = async (newFilters: { startDate?: string; endDate?: string }) => {
+    setFilters(newFilters);
+    await load(newFilters);
+  };
 
-  return { reports, summary, loading, reload: load };
+  return { reports, summary, loading, reload: load, applyFilters, filters };
 }
 
 // ────────────────────────────────────────────────

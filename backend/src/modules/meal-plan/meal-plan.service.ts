@@ -180,7 +180,9 @@ export class MealPlanService {
         soLuong: item.thieu,
         donVi: item.donVi,
         nguoiPhuTrach: userId,
-        giaDuKien: 0
+        giaDuKien: 0,
+        giaThucTe: 0,
+        danhMucHang: 'Thực phẩm tươi',
       });
     }
 

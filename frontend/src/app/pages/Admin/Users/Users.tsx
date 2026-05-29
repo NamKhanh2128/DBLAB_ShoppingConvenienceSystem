@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Search, Plus, MoreVertical, Edit, Trash2, Eye, Users as UsersIcon, Phone, MapPin, Shield, Ban, RefreshCw, CheckCircle, UserCheck, Download, X } from "lucide-react";
+import { Search, Plus, MoreVertical, Edit, Trash2, Eye, Users as UsersIcon, Phone, MapPin, Shield, Ban, RefreshCw, CheckCircle, UserCheck, Download, AlertTriangle } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
 import { Card, CardContent } from "../../../components/ui/card";
@@ -8,10 +8,10 @@ import { Badge } from "../../../components/ui/badge";
 import { Avatar, AvatarFallback } from "../../../components/ui/avatar";
 import { PageHeader } from "../../../components/common/PageHeader";
 import { AddEditUserModal } from "../../../components/common/AddEditUserModal";
-import { ConfirmDialog } from "../../../components/common/ConfirmDialog";
 import { toast } from "../../../components/common/Toast";
 import { useAdmin, AdminUser } from "../../../context/AdminContext";
 import { ViewUserModal } from "./ViewUserModal";
+import { adminApi } from "../../../services/api";
 import Modal from "../../../components/common/Modal";
 
 const PAGE_SIZE = 8;
@@ -38,7 +38,6 @@ const filterTabs = [
   { key: "banned", label: "Bị cấm" },
 ];
 
-// Custom Action Modal — bypass Radix Portal z-index issues
 function UserActionModal({
   user, onClose, onView, onEdit, onBan, onReset, onDelete,
 }: {
@@ -82,7 +81,7 @@ function UserActionModal({
 }
 
 export function Users() {
-  const { users, setUsers, addLog } = useAdmin();
+  const { users, reload } = useAdmin();
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState("all");
   const [page, setPage] = useState(1);
@@ -92,6 +91,7 @@ export function Users() {
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [modalMode, setModalMode] = useState<"add" | "edit">("add");
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
   const filtered = useMemo(() => {
     return users.filter(u => {
@@ -118,54 +118,74 @@ export function Users() {
   const handleAdd = () => { setSelectedUser(null); setModalMode("add"); setEditOpen(true); };
   const handleEdit = (u: AdminUser) => { setSelectedUser(u); setModalMode("edit"); setEditOpen(true); };
   const handleView = (u: AdminUser) => { setSelectedUser(u); setViewOpen(true); };
-  const handleDelete = (u: AdminUser) => { setSelectedUser(u); setDeleteOpen(true); };
+  const handleDelete = (u: AdminUser) => { setSelectedUser(u); setDeleteConfirmText(""); setDeleteOpen(true); };
 
-  const handleBanToggle = (u: AdminUser) => {
-    const isBanned = u.status === "banned";
-    setUsers(users.map(x => x.id === u.id ? { ...x, status: isBanned ? "active" : "banned" } : x));
-    addLog({ user: "Admin", action: isBanned ? "Bỏ cấm tài khoản" : "Cấm tài khoản", type: "user", status: "warning", description: `${isBanned ? "Bỏ cấm" : "Đã cấm"}: ${u.name}`, ip: "192.168.1.1" });
-    toast.success(isBanned ? `Đã bỏ cấm "${u.name}"` : `Đã cấm "${u.name}"`);
+  const handleBanToggle = async (u: AdminUser) => {
+    try {
+      const isBanned = u.status === "banned";
+      const nextStatus = isBanned ? "ACTIVE" : "BANNED";
+      await adminApi.updateStatus(Number(u.id), nextStatus);
+      await reload();
+      toast.success(isBanned ? `Đã bỏ cấm tài khoản "${u.name}"` : `Đã khóa tài khoản "${u.name}"`);
+    } catch (e: any) {
+      toast.error(e.message || "Thao tác thất bại");
+    }
   };
 
   const handleResetPw = (u: AdminUser) => {
-    addLog({ user: "Admin", action: "Reset mật khẩu", type: "user", status: "success", description: `Reset mật khẩu: ${u.name}`, ip: "192.168.1.1" });
-    toast.success(`Đã gửi email reset tới "${u.email}"`);
+    toast.success(`Đã gửi email khôi phục mật khẩu tới "${u.email}"`);
   };
 
-  const handleSave = (data: any) => {
-    if (modalMode === "add") {
-      const newUser: AdminUser = {
-        ...data, id: Date.now().toString(), groups: 0,
-        avatar: data.name.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2),
-        joinDate: new Date().toISOString().slice(0, 10), lastLogin: "-",
-      };
-      setUsers([...users, newUser]);
-      addLog({ user: "Admin", action: "Thêm người dùng", type: "user", status: "success", description: `Tạo tài khoản: ${newUser.name}`, ip: "192.168.1.1" });
-      toast.success("Đã thêm người dùng mới!");
-    } else if (selectedUser) {
-      setUsers(users.map(u => u.id === selectedUser.id ? { ...u, ...data } : u));
-      addLog({ user: "Admin", action: "Cập nhật người dùng", type: "user", status: "success", description: `Cập nhật: ${selectedUser.name}`, ip: "192.168.1.1" });
-      toast.success("Đã cập nhật thông tin!");
+  const handleSave = async (data: any) => {
+    try {
+      if (modalMode === "add") {
+        toast.info("Vui lòng đăng ký tài khoản qua cổng xác thực công cộng để đảm bảo tính toàn vẹn bảo mật.");
+      } else if (selectedUser) {
+        // Cập nhật vai trò nếu thay đổi
+        if (data.role && data.role.toUpperCase() !== selectedUser.role.toUpperCase()) {
+          await adminApi.updateRole(Number(selectedUser.id), data.role.toUpperCase());
+        }
+        // Cập nhật trạng thái nếu thay đổi
+        if (data.status && data.status.toUpperCase() !== selectedUser.status.toUpperCase()) {
+          await adminApi.updateStatus(Number(selectedUser.id), data.status.toUpperCase());
+        }
+        await reload();
+        toast.success("Cập nhật thông tin tài khoản thành công!");
+      }
+      setEditOpen(false);
+    } catch (e: any) {
+      toast.error(e.message || "Cập nhật tài khoản thất bại");
     }
-    setEditOpen(false);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!selectedUser) return;
-    setUsers(users.filter(u => u.id !== selectedUser.id));
-    addLog({ user: "Admin", action: "Xóa người dùng", type: "user", status: "warning", description: `Xóa: ${selectedUser.name}`, ip: "192.168.1.1" });
-    toast.success(`Đã xóa "${selectedUser.name}"`);
-    setDeleteOpen(false);
+    if (deleteConfirmText !== "XÓA") {
+      toast.error("Vui lòng nhập chính xác từ XÓA để xác nhận");
+      return;
+    }
+    try {
+      await adminApi.deleteUser(Number(selectedUser.id));
+      await reload();
+      toast.success(`Đã xóa mềm thành công người dùng "${selectedUser.name}"`);
+      setDeleteOpen(false);
+      setDeleteConfirmText("");
+    } catch (e: any) {
+      toast.error(e.message || "Xóa người dùng thất bại");
+    }
   };
 
   const exportCSV = () => {
-    const rows = [["ID","Tên","Email","SĐT","Địa chỉ","Vai trò","Trạng thái","Ngày tham gia","Đăng nhập cuối"],
-      ...filtered.map(u => [u.id,u.name,u.email,u.phone,u.address,u.role,u.status,u.joinDate,u.lastLogin])];
-    const csv = rows.map(r => r.join(",")).join("\n");
+    const rows = [["ID","Tên","Email","SĐT","Địa chỉ","Vai trò","Trạng thái","Ngày tham gia"],
+      ...filtered.map(u => [u.id,u.name,u.email,u.phone,u.address,u.role,u.status,u.joinDate])];
+    const csv = "\uFEFF" + rows.map(r => r.join(",")).join("\n"); // Excel UTF-8 BOM
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
-    a.download = "users.csv"; a.click();
-    toast.success("Đã xuất danh sách người dùng!");
+    a.href = url;
+    a.download = "danh_sach_nguoi_dung.csv"; 
+    a.click();
+    toast.success("Đã xuất danh sách người dùng thành công!");
   };
 
   const statCards = [
@@ -182,7 +202,7 @@ export function Users() {
         description={`${stats.total} người dùng trong hệ thống`}
         icon={UsersIcon}
         action={
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <Button variant="outline" onClick={exportCSV} className="rounded-[var(--radius-sm)] border-[var(--border-light)] font-semibold">
               <Download className="w-4 h-4 mr-2" />Xuất CSV
             </Button>
@@ -248,7 +268,6 @@ export function Users() {
                   <TableHead className="font-bold text-[var(--text-dark)]">Vai trò</TableHead>
                   <TableHead className="font-bold text-[var(--text-dark)]">Nhóm</TableHead>
                   <TableHead className="font-bold text-[var(--text-dark)]">Ngày tham gia</TableHead>
-                  <TableHead className="font-bold text-[var(--text-dark)]">Đăng nhập cuối</TableHead>
                   <TableHead className="font-bold text-[var(--text-dark)]">Trạng thái</TableHead>
                   <TableHead className="font-bold text-[var(--text-dark)] text-right pr-6">Thao tác</TableHead>
                 </TableRow>
@@ -256,7 +275,7 @@ export function Users() {
               <TableBody>
                 {paginated.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-16 text-[var(--text-muted)]">
+                    <TableCell colSpan={7} className="text-center py-16 text-[var(--text-muted)]">
                       <UsersIcon className="w-12 h-12 mx-auto mb-3 opacity-30" />Không tìm thấy người dùng
                     </TableCell>
                   </TableRow>
@@ -296,7 +315,6 @@ export function Users() {
                       <span className="text-xs text-[var(--text-muted)] ml-1">nhóm</span>
                     </TableCell>
                     <TableCell className="text-sm text-[var(--text-muted)] font-medium">{user.joinDate}</TableCell>
-                    <TableCell className="text-sm text-[var(--text-muted)] font-medium">{user.lastLogin}</TableCell>
                     <TableCell>
                       <Badge className={`${statusConfig[user.status]?.cls} rounded-full px-3 py-1 font-semibold text-xs`}>
                         {statusConfig[user.status]?.label}
@@ -318,7 +336,7 @@ export function Users() {
           </div>
 
           {/* Pagination */}
-          <div className="flex items-center justify-between px-6 py-4 border-t border-[var(--border-light)]">
+          <div className="flex items-center justify-between px-6 py-4 border-t border-[var(--border-light)] flex-wrap gap-4">
             <p className="text-sm text-[var(--text-muted)]">
               Hiển thị {Math.min((page-1)*PAGE_SIZE+1, filtered.length)}–{Math.min(page*PAGE_SIZE, filtered.length)} / {filtered.length} người dùng
             </p>
@@ -352,10 +370,58 @@ export function Users() {
       />
       <AddEditUserModal isOpen={editOpen} onClose={() => setEditOpen(false)} onSave={handleSave}
         user={selectedUser} mode={modalMode} existingEmails={users.map(u => u.email)} />
-      <ConfirmDialog isOpen={deleteOpen} onClose={() => setDeleteOpen(false)} onConfirm={confirmDelete}
-        title="Xác nhận xóa người dùng"
-        description={`Bạn có chắc muốn xóa "${selectedUser?.name}"? Hành động này không thể hoàn tác.`}
-        confirmText="Xóa" variant="danger" />
+
+      {/* Giao diện Xác nhận xóa 2 lớp cực kỳ an toàn */}
+      <Modal 
+        isOpen={deleteOpen} 
+        onClose={() => { setDeleteOpen(false); setDeleteConfirmText(""); }} 
+        title="Xác nhận xóa tài khoản nguy hiểm"
+        size="sm"
+      >
+        <div className="space-y-4 p-1">
+          <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-xl text-red-900 text-sm">
+            <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold">Hành động này cực kỳ nguy hiểm!</p>
+              <p className="text-xs text-red-700 mt-0.5">Tài khoản sẽ bị xóa mềm và không thể truy cập hệ thống. Các liên kết giỏ hàng sẽ bị vô hiệu hóa.</p>
+            </div>
+          </div>
+          
+          <div className="space-y-2">
+            <p className="text-sm font-semibold text-gray-700">
+              Bạn có chắc chắn muốn xóa người dùng <strong>"{selectedUser?.name}"</strong>?
+            </p>
+            <div className="space-y-1.5 pt-2">
+              <label className="text-xs font-black text-gray-500 block">
+                Nhập chữ <span className="text-red-600 font-extrabold bg-red-50 px-1.5 py-0.5 rounded">XÓA</span> để xác nhận:
+              </label>
+              <Input 
+                placeholder="Gõ XÓA" 
+                value={deleteConfirmText}
+                onChange={e => setDeleteConfirmText(e.target.value)}
+                className="rounded-lg border-gray-300 focus-visible:ring-red-500 focus-visible:border-red-500 font-bold"
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-2.5 pt-2">
+            <Button 
+              variant="outline" 
+              onClick={() => { setDeleteOpen(false); setDeleteConfirmText(""); }}
+              className="flex-1 rounded-lg"
+            >
+              Hủy
+            </Button>
+            <Button 
+              onClick={confirmDelete}
+              disabled={deleteConfirmText !== "XÓA"}
+              className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white font-bold rounded-lg shadow-sm"
+            >
+              Xóa người dùng
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

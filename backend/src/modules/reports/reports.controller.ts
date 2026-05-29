@@ -6,12 +6,40 @@ const svc = new ReportsService();
 
 export class ReportsController {
   async getAll(req: Request, res: Response, next: NextFunction) {
-    try { return createSuccess(res, await svc.getReports(Number(req.query.groupId))); } catch (e) { next(e); }
+    try {
+      const userId = (req as any).user?.id;
+      const groupId = Number(req.query.groupId);
+      const data = await svc.getReports(groupId, userId);
+      return createSuccess(res, data);
+    } catch (e) {
+      next(e);
+    }
   }
+
   async getSummary(req: Request, res: Response, next: NextFunction) {
-    try { return createSuccess(res, await svc.getSummary(Number(req.query.groupId))); } catch (e) { next(e); }
+    try {
+      const userId = (req as any).user?.id;
+      const groupId = Number(req.query.groupId);
+      
+      // Nhận các tham số thống kê nâng cao
+      const timezoneOffset = req.query.timezoneOffset !== undefined ? Number(req.query.timezoneOffset) : 0;
+      const startDate = req.query.startDate ? String(req.query.startDate) : undefined;
+      const endDate = req.query.endDate ? String(req.query.endDate) : undefined;
+
+      const data = await svc.getSummary(groupId, userId, timezoneOffset, startDate, endDate);
+      return createSuccess(res, data);
+    } catch (e) {
+      next(e);
+    }
   }
+
   async create(req: Request, res: Response, next: NextFunction) {
-    try { return createSuccess(res, await svc.create(req.body), 'Tạo báo cáo thành công', 201); } catch (e) { next(e); }
+    try {
+      const userId = (req as any).user?.id;
+      const data = await svc.create(req.body, userId);
+      return createSuccess(res, data, 'Tạo báo cáo thành công', 201);
+    } catch (e) {
+      next(e);
+    }
   }
 }

@@ -176,6 +176,24 @@ export const shoppingApi = {
 
   deleteItem: (itemId: number) =>
     request(`/shopping/items/${itemId}`, { method: 'DELETE' }),
+
+  /**
+   * Hoàn thành mua sắm + tự động nhập toàn bộ items đã mua vào kho tủ lạnh.
+   */
+  completeAndRestock: (listId: number) =>
+    request<{ success: boolean; data: { total: number; addedToInventory: number; mergedWithExisting: number; message: string } }>(
+      `/shopping/lists/${listId}/complete-and-restock`,
+      { method: 'POST' }
+    ),
+
+  /**
+   * Gom nhóm tất cả items trùng tên+đơn vị trong một danh sách.
+   */
+  mergeDuplicates: (listId: number) =>
+    request<{ success: boolean; data: { mergedCount: number; message: string } }>(
+      `/shopping/lists/${listId}/merge-duplicates`,
+      { method: 'POST' }
+    ),
 };
 
 // ────────────────────────────────────────────────
@@ -208,17 +226,49 @@ export const inventoryApi = {
 // RECIPES
 // ────────────────────────────────────────────────
 export const recipesApi = {
-  getAll: () => request<{ success: boolean; data: any[] }>('/recipes'),
-  getOne: (id: number) => request<{ success: boolean; data: any }>(`/recipes/${id}`),
+  /** Lấy tất cả công thức (system + của nhóm) */
+  getAll: (groupId?: number) =>
+    request<{ success: boolean; data: any[] }>(
+      groupId ? `/recipes?groupId=${groupId}` : '/recipes'
+    ),
+
+  /** Lấy chi tiết một công thức kèm nguyên liệu */
+  getOne: (id: number, groupId?: number) =>
+    request<{ success: boolean; data: any }>(
+      groupId ? `/recipes/${id}?groupId=${groupId}` : `/recipes/${id}`
+    ),
+
+  /** Tạo công thức mới (gắn với nhóm) */
   create: (data: any) =>
     request<{ success: boolean; data: any }>(
       '/recipes',
       { method: 'POST', body: JSON.stringify(data) }
     ),
+
+  /** Cập nhật công thức */
   update: (id: number, data: any) =>
     request(`/recipes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+
+  /** Xóa công thức (chỉ recipe của nhóm) */
   remove: (id: number) =>
     request(`/recipes/${id}`, { method: 'DELETE' }),
+
+  /**
+   * "Đã nấu xong" — tự động trừ nguyên liệu trong kho.
+   * @param soKhauPhan  Số khẩu phần thực tế nấu
+   * @param maNhom      ID nhóm gia đình (để biết kho nào cần trừ)
+   */
+  cook: (id: number, soKhauPhan: number, maNhom: number) =>
+    request<{ success: boolean; data: { deductedCount: number; notFoundIngredients: string[]; warning: string | null } }>(
+      `/recipes/${id}/cook`,
+      { method: 'POST', body: JSON.stringify({ soKhauPhan, maNhom }) }
+    ),
+
+  /**
+   * Gợi ý công thức dựa trên nguyên liệu có sẵn trong kho.
+   */
+  suggest: (groupId: number) =>
+    request<{ success: boolean; data: any[] }>(`/recipes/suggest?groupId=${groupId}`),
 };
 
 // ────────────────────────────────────────────────
@@ -330,8 +380,13 @@ export const reportsApi = {
   getAll: (groupId: number) =>
     request<{ success: boolean; data: any[] }>(`/reports?groupId=${groupId}`),
 
-  getSummary: (groupId: number) =>
-    request<{ success: boolean; data: any }>(`/reports/summary?groupId=${groupId}`),
+  getSummary: (groupId: number, timezoneOffset?: number, startDate?: string, endDate?: string) => {
+    let url = `/reports/summary?groupId=${groupId}`;
+    if (timezoneOffset !== undefined) url += `&timezoneOffset=${timezoneOffset}`;
+    if (startDate) url += `&startDate=${startDate}`;
+    if (endDate) url += `&endDate=${endDate}`;
+    return request<{ success: boolean; data: any }>(url);
+  },
 };
 
 // ────────────────────────────────────────────────
@@ -358,4 +413,10 @@ export const adminApi = {
 
   deleteUser: (id: number) =>
     request(`/admin/users/${id}`, { method: 'DELETE' }),
+
+  getAuditLogs: () =>
+    request<{ success: boolean; data: any[] }>('/admin/audit-logs'),
+
+  cleanupFakeUsers: () =>
+    request<{ success: boolean; data: any }>('/admin/cleanup-fake-users', { method: 'POST' }),
 };
