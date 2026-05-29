@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { 
   Plus, Search, Filter, AlertTriangle, Calendar, MapPin, Eye, Trash2, 
-  ArrowRight, Loader2, RefreshCw, Barcode, History, ShoppingBag, 
+  ArrowRight, Loader2, RefreshCw, History, ShoppingBag, 
   Layers, Package, Check, HelpCircle, User, Minimize2, ChevronDown, ChevronUp 
 } from "lucide-react";
 import { Button } from "../../components/ui/button";
@@ -20,14 +20,7 @@ import {
 import { useInventory } from "../../hooks/useData";
 import { getExpiryStatus, INVENTORY_UNITS } from "../../utils/inventory";
 
-// Mock Barcode products list for simulated scanner
-const MOCK_PRODUCTS = [
-  { barcode: "8934563123456", name: "Sữa tươi Vinamilk 100% ít đường", quantity: 4, unit: "hộp", location: "Tủ lạnh", category: "Sữa", expiryDays: 10 },
-  { barcode: "8935001928374", name: "Trứng gà Ba Huân (Hộp 10 quả)", quantity: 1, unit: "hộp", location: "Tủ lạnh", category: "Trứng", expiryDays: 14 },
-  { barcode: "8936012938475", name: "Thịt ba chỉ heo CP (Khay 500g)", quantity: 0.5, unit: "kg", location: "Ngăn đông", category: "Thịt", expiryDays: 30 },
-  { barcode: "8935213847561", name: "Táo Fuji đỏ chín mọng nhập khẩu", quantity: 6, unit: "quả", location: "Tủ lạnh", category: "Trái cây", expiryDays: 7 },
-  { barcode: "8934827162534", name: "Mì ăn liền Hảo Hảo Tôm chua cay", quantity: 12, unit: "gói", location: "Tủ bếp", category: "Đồ khô", expiryDays: 180 },
-];
+
 
 export function Inventory() {
   const { success, error, info } = useToastContext();
@@ -59,9 +52,7 @@ export function Inventory() {
   const [formCategory, setFormCategory] = useState("Rau củ");
   const [formNotes, setFormNotes] = useState("");
 
-  // Barcode Scanner Simulator state
-  const [showScanner, setShowScanner] = useState(false);
-  const [isScanning, setIsScanning] = useState(false);
+
 
   // Right column tab (Quick add vs logs)
   const [rightTab, setRightTab] = useState("add");
@@ -168,21 +159,7 @@ export function Inventory() {
     setFormExpiry(d.toISOString().split("T")[0]);
   };
 
-  const handleSimulateScan = (product: typeof MOCK_PRODUCTS[0]) => {
-    setIsScanning(true);
-    setTimeout(() => {
-      setFormName(product.name);
-      setFormQty(product.quantity.toString());
-      setFormUnit(product.unit);
-      setFormLocation(product.location);
-      setFormCategory(product.category);
-      handleSetExpiryDays(product.expiryDays);
-      setFormNotes(`Quét mã vạch: ${product.barcode}`);
-      setIsScanning(false);
-      setShowScanner(false);
-      success("✅ Quét thành công!", `Đã nhận diện sản phẩm: ${product.name}`);
-    }, 1200);
-  };
+
 
   // CRUD handlers
   const handleAddSubmit = async (e?: React.FormEvent) => {
@@ -644,66 +621,13 @@ export function Inventory() {
             <Card className="border-none shadow-[var(--shadow-card)] rounded-[var(--radius)] bg-white overflow-hidden">
               <CardHeader className="p-4 pb-2 border-b border-[var(--border-light)]">
                 <CardTitle className="text-xs font-bold text-[var(--text-dark)] uppercase tracking-wider flex items-center justify-between">
-                  <span>Nhập kho siêu tốc</span>
-                  <Barcode className="w-4 h-4 text-[var(--success)]" />
+                  <span>Thêm thực phẩm nhanh</span>
                 </CardTitle>
               </CardHeader>
               
               <CardContent className="p-4 space-y-4">
                 
-                {/* Barcode Simulator triggers */}
-                <div className="bg-gradient-to-br from-green-500/5 to-emerald-500/10 border border-emerald-500/20 rounded-xl p-3.5 relative overflow-hidden">
-                  <div className="absolute right-0 bottom-0 text-7xl opacity-5">🛒</div>
-                  <h4 className="font-black text-xs text-[var(--success)] flex items-center gap-1 mb-1">
-                    <Barcode className="w-4 h-4" />
-                    Quét Mã Vạch Hóa Đơn
-                  </h4>
-                  <p className="text-[10px] text-gray-500 font-semibold mb-3 leading-relaxed">
-                    Vừa đi siêu thị về? Bấm để giả lập quét camera tự động nhận diện thực phẩm.
-                  </p>
-                  
-                  {showScanner ? (
-                    <div className="bg-white border border-dashed border-emerald-500/50 rounded-lg p-2.5 space-y-2">
-                      <p className="font-bold text-[9px] text-emerald-600 animate-pulse text-center">
-                        MÔ PHỎNG CAMERA: CHỌN SẢN PHẨM QUÉT
-                      </p>
-                      <div className="flex flex-col gap-1.5 max-h-44 overflow-y-auto">
-                        {MOCK_PRODUCTS.map((p) => (
-                          <button
-                            key={p.barcode}
-                            onClick={() => handleSimulateScan(p)}
-                            disabled={isScanning}
-                            className="bg-gray-50 hover:bg-[var(--success)]/10 border border-gray-100 hover:border-[var(--success)] p-1.5 rounded text-left transition-all flex items-center justify-between"
-                          >
-                            <div className="min-w-0">
-                              <p className="font-bold text-[10px] truncate text-[var(--text-dark)]">{p.name}</p>
-                              <p className="text-[8px] text-[var(--text-muted)] font-bold font-mono">CODE: {p.barcode}</p>
-                            </div>
-                            <span className="text-xs flex-shrink-0 bg-white border py-0.5 px-1 rounded font-bold shadow-sm">
-                              {p.quantity} {p.unit}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="w-full text-[10px] h-7 font-bold text-red-500 hover:bg-red-50"
-                        onClick={() => setShowScanner(false)}
-                      >
-                        Tắt giả lập quét
-                      </Button>
-                    </div>
-                  ) : (
-                    <Button
-                      onClick={() => setShowScanner(true)}
-                      className="w-full bg-[var(--success)] text-white hover:bg-[var(--success)]/90 text-xs font-bold py-2 rounded-lg flex items-center justify-center gap-1.5 shadow-sm"
-                    >
-                      <Barcode className="w-3.5 h-3.5" />
-                      Mở Giả Lập Quét Camera
-                    </Button>
-                  )}
-                </div>
+
 
                 {/* Inline form inputs */}
                 <form onSubmit={handleAddSubmit} className="space-y-3.5 text-xs text-[var(--text-dark)]">

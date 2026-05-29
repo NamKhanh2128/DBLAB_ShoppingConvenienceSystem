@@ -77,7 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const initAuth = async () => {
       try {
-        const checkRes = await fetch('http://localhost:5000/api/v1/auth/refresh', { method: 'POST' });
+        const checkRes = await fetch('http://localhost:5000/api/v1/auth/refresh', { method: 'POST', credentials: 'include' });
         if (checkRes.ok) {
           const refreshData = await checkRes.ok ? await checkRes.json() : null;
           if (refreshData?.data?.token) {

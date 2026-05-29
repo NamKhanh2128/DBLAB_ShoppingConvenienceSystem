@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import {
   Plus, Search, Clock, Users, Star, Filter, Eye, ChefHat, Trash2,
   Loader2, Lightbulb, Play, CheckCircle2, ChevronRight, ChevronLeft,
@@ -87,6 +87,76 @@ function CookingModal({
     ? recipe.steps
     : ["Không có hướng dẫn nấu ăn cho công thức này."];
 
+  // ==========================================
+  // BỘ ĐẾM THỜI GIAN NẤU ĂN (TIMER) CHUYÊN NGHIỆP
+  // ==========================================
+  const [secondsLeft, setSecondsLeft] = useState(0);
+  const [isTimerRunning, setIsTimerRunning] = useState(false);
+  const [timerMaxSeconds, setTimerMaxSeconds] = useState(0);
+
+  // Tự động dò tìm thời gian (phút) trong văn bản
+  const detectTimeInStep = (text: string) => {
+    const match = text.match(/(\d+)\s*(?:-|đến)?\s*\d*\s*(?:phút|ph)/i);
+    if (match && match[1]) {
+      return parseInt(match[1], 10) * 60;
+    }
+    return 0;
+  };
+
+  // Đồng bộ thời gian khi đổi bước
+  useEffect(() => {
+    const timeInSecs = detectTimeInStep(steps[step]);
+    if (timeInSecs > 0) {
+      setSecondsLeft(timeInSecs);
+      setTimerMaxSeconds(timeInSecs);
+      setIsTimerRunning(false);
+    } else {
+      setSecondsLeft(0);
+      setTimerMaxSeconds(0);
+      setIsTimerRunning(false);
+    }
+  }, [step, steps]);
+
+  // Bộ Timer Tick mỗi giây
+  useEffect(() => {
+    let interval: any = null;
+    if (isTimerRunning && secondsLeft > 0) {
+      interval = setInterval(() => {
+        setSecondsLeft(prev => {
+          if (prev <= 1) {
+            setIsTimerRunning(false);
+            try {
+              const context = new (window.AudioContext || (window as any).webkitAudioContext)();
+              const osc = context.createOscillator();
+              const gain = context.createGain();
+              osc.connect(gain);
+              gain.connect(context.destination);
+              osc.type = 'sine';
+              osc.frequency.setValueAtTime(880, context.currentTime);
+              gain.gain.setValueAtTime(0.5, context.currentTime);
+              osc.start();
+              osc.stop(context.currentTime + 0.5);
+            } catch (e) {
+              console.log("Audio contexts blocked or not supported");
+            }
+            success("🔔 Hết giờ!", `Công đoạn nấu ăn "${recipe.name}" đã hoàn tất.`);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isTimerRunning, secondsLeft, recipe.name, success]);
+
+  const formatTime = (secs: number) => {
+    const m = Math.floor(secs / 60).toString().padStart(2, '0');
+    const s = (secs % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
   const handleCook = async () => {
     setCooking(true);
     try {
@@ -172,6 +242,81 @@ function CookingModal({
                     <p className="text-[var(--text-dark)] font-medium leading-relaxed text-base">{steps[step]}</p>
                   </div>
                 </div>
+
+                {/* Cooking step timer card */}
+                {secondsLeft > 0 || timerMaxSeconds > 0 ? (
+                  <div className="mt-6 p-4 rounded-xl border border-amber-200 bg-amber-50/50 space-y-3 shadow-sm animate-fade-in text-xs text-[var(--text-dark)]">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black text-amber-700 uppercase tracking-wider flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: isTimerRunning ? '3s' : '0s' }} />
+                        Bộ đếm thời gian nấu ăn
+                      </span>
+                      {secondsLeft === 0 && (
+                        <Badge className="bg-amber-600 text-white border-none font-bold text-[9px] animate-bounce">Hoàn tất!</Badge>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-4 justify-center">
+                      {/* Big Digital Clock */}
+                      <span className={`font-mono text-3xl font-black tracking-widest ${secondsLeft === 0 ? 'text-red-500 animate-pulse' : 'text-gray-800'}`}>
+                        {formatTime(secondsLeft)}
+                      </span>
+
+                      {/* Control Buttons */}
+                      <div className="flex items-center gap-1.5">
+                        <Button
+                          size="sm"
+                          onClick={() => setIsTimerRunning(!isTimerRunning)}
+                          className={`h-8 px-3 text-xs font-bold text-white border-none rounded-lg transition-all ${
+                            isTimerRunning ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700'
+                          }`}
+                        >
+                          {isTimerRunning ? "Tạm dừng" : "Bắt đầu"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => { setSecondsLeft(timerMaxSeconds); setIsTimerRunning(false); }}
+                          className="h-8 px-2.5 text-xs font-bold border-gray-300 hover:bg-gray-100 rounded-lg bg-white"
+                        >
+                          Reset
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Quick add time buttons */}
+                    <div className="flex items-center gap-2 justify-center pt-1 border-t border-amber-200/40">
+                      <button
+                        onClick={() => { setSecondsLeft(prev => prev + 60); }}
+                        className="text-[10px] font-bold text-amber-700 bg-amber-100/50 hover:bg-amber-100 px-2 py-0.5 rounded transition-all"
+                      >
+                        +1 phút
+                      </button>
+                      <button
+                        onClick={() => { setSecondsLeft(prev => prev + 300); }}
+                        className="text-[10px] font-bold text-amber-700 bg-amber-100/50 hover:bg-amber-100 px-2 py-0.5 rounded transition-all"
+                      >
+                        +5 phút
+                      </button>
+                      <button
+                        onClick={() => { setSecondsLeft(prev => Math.max(0, prev - 60)); }}
+                        className="text-[10px] font-bold text-amber-700 bg-amber-100/50 hover:bg-amber-100 px-2 py-0.5 rounded transition-all"
+                      >
+                        -1 phút
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* Custom timer offer if no time was detected in step text */
+                  <div className="mt-4 text-center">
+                    <button
+                      onClick={() => { setSecondsLeft(300); setTimerMaxSeconds(300); }}
+                      className="inline-flex items-center gap-1 text-[10px] font-bold text-[var(--gold)] hover:underline"
+                    >
+                      <Clock className="w-3 h-3" /> Bật hẹn giờ thủ công (5 phút)
+                    </button>
+                  </div>
+                )}
 
                 {/* Navigation */}
                 <div className="flex gap-3 mt-8">

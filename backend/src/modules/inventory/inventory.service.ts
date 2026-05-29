@@ -30,6 +30,12 @@ export class InventoryService {
   }
 
   async addFood(data: any, creatorId: number) {
+    // Tự động gán mã nhóm mặc định là 1 nếu maNhom bị null/không hợp lệ khi chạy ở localhost
+    if ((data.maNhom === null || data.maNhom === undefined || isNaN(Number(data.maNhom))) && 
+        (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV)) {
+      data.maNhom = 1;
+    }
+
     // Validate dữ liệu đầu vào bằng Zod
     const validatedData = addFoodSchema.parse(data);
     

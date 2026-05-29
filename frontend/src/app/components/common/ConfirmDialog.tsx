@@ -9,7 +9,7 @@ interface ConfirmDialogProps {
   message: string | ReactNode;
   confirmText?: string;
   cancelText?: string;
-  type?: 'danger' | 'warning' | 'info';
+  type?: 'danger' | 'warning' | 'info' | 'default';
   isLoading?: boolean;
 }
 
@@ -29,6 +29,11 @@ const typeStyles = {
     bg: 'bg-[var(--info-light)]',
     button: 'bg-[var(--info)] hover:bg-[#2563EB]',
   },
+  default: {
+    icon: 'text-[var(--purple-deep)]',
+    bg: 'bg-[var(--purple-deep)]/10',
+    button: 'bg-[var(--purple-deep)] hover:bg-[#5a429a]',
+  },
 };
 
 export function ConfirmDialog({
@@ -44,7 +49,7 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   if (!isOpen) return null;
 
-  const styles = typeStyles[type];
+  const styles = typeStyles[type] || typeStyles.info;
 
   const handleConfirm = () => {
     onConfirm();

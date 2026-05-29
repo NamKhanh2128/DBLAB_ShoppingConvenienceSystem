@@ -8,7 +8,10 @@ export class InventoryController {
   
   async getAll(req: any, res: Response, next: NextFunction) {
     try { 
-      const groupId = Number(req.query.groupId);
+      let groupId = Number(req.query.groupId);
+      if ((!groupId || isNaN(groupId)) && (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV)) {
+        groupId = 1;
+      }
       const data = await svc.getInventory(groupId, req.user.id);
       return createSuccess(res, data); 
     } catch (e) { next(e); }
@@ -16,7 +19,10 @@ export class InventoryController {
 
   async getExpiring(req: any, res: Response, next: NextFunction) {
     try { 
-      const groupId = Number(req.query.groupId);
+      let groupId = Number(req.query.groupId);
+      if ((!groupId || isNaN(groupId)) && (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV)) {
+        groupId = 1;
+      }
       const data = await svc.getExpiring(groupId, req.user.id);
       return createSuccess(res, data); 
     } catch (e) { next(e); }
@@ -47,7 +53,10 @@ export class InventoryController {
 
   async getLogs(req: any, res: Response, next: NextFunction) {
     try {
-      const groupId = Number(req.params.groupId);
+      let groupId = Number(req.params.groupId);
+      if ((!groupId || isNaN(groupId)) && (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV)) {
+        groupId = 1;
+      }
       const data = await svc.getAuditLogs(groupId, req.user.id);
       return createSuccess(res, data);
     } catch (e) { next(e); }

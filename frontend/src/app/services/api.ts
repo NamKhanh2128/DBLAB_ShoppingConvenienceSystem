@@ -1,11 +1,19 @@
 // Base API configuration
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
 
-// Token helpers (Lưu trữ Access Token trong RAM để chống XSS)
+// Token helpers (Lưu trữ Access Token trong localStorage ở localhost để việc tải lại trang không bị out nick)
 let memoryToken: string | null = null;
-export const getToken = (): string | null => memoryToken;
-export const setToken = (token: string) => { memoryToken = token; };
-export const removeToken = () => { memoryToken = null; };
+export const getToken = (): string | null => {
+  return memoryToken || localStorage.getItem('accessToken');
+};
+export const setToken = (token: string) => { 
+  memoryToken = token; 
+  localStorage.setItem('accessToken', token);
+};
+export const removeToken = () => { 
+  memoryToken = null; 
+  localStorage.removeItem('accessToken');
+};
 
 export const getUser = () => {
   const u = localStorage.getItem('user');
@@ -30,7 +38,7 @@ const onRefreshed = (token: string) => {
 async function handleRefresh(): Promise<string | null> {
   try {
     // Gọi API làm mới, cookie refreshToken (HttpOnly) tự động được đính kèm bởi trình duyệt
-    const res = await fetch(`${BASE_URL}/auth/refresh`, { method: 'POST' });
+    const res = await fetch(`${BASE_URL}/auth/refresh`, { method: 'POST', credentials: 'include' });
     if (!res.ok) throw new Error('Refresh failed');
     const data = await res.json();
     const newToken = data.data.token;

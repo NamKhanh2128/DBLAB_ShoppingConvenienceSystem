@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { 
   Plus, Calendar as CalendarIcon, ChefHat, Trash2, Sparkles, 
   ShoppingCart, Loader2, ChevronLeft, ChevronRight, Copy, 
@@ -8,7 +8,7 @@ import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
 import { useToastContext } from "../../context/ToastContext";
-import { AddMealPlanModal, GenerateMealPlanModal, ViewRecipeModal } from "../../components/common";
+import { AddMealPlanModal, GenerateMealPlanModal, ViewRecipeModal, ConfirmDialog } from "../../components/common";
 import { useMealPlan } from "../../hooks/useData";
 import { mealPlanApi, recipesApi } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";

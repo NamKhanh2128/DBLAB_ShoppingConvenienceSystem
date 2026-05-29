@@ -371,7 +371,7 @@ export function Reports() {
             </p>
           </div>
           <div>
-            <Link to="/shopping/lists">
+            <Link to="/app/shopping-list">
               <Button className="bg-gradient-purple text-white font-bold rounded-xl px-6 py-3 hover-lift shadow-md">
                 Lên danh sách đi chợ ngay
                 <ChevronRight className="w-4 h-4 ml-2" />

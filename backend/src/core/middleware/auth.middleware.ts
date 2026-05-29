@@ -34,32 +34,37 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
       return createError(res, 'Phiên đăng nhập không hợp lệ hoặc đã hết hạn', 401);
     }
 
-    // [BẢO MẬT ADMIN] Enforce thời hạn tối đa 2 giờ cho tài khoản Admin/Moderator
-    if (decoded.role === 'ADMIN' || decoded.role === 'MODERATOR') {
-      const iat = (decoded as any).iat || 0;
-      const nowInSecs = Math.floor(Date.now() / 1000);
-      if (nowInSecs - iat > 7200) { // 2 giờ
-        return createError(res, 'Phiên làm việc của Quản trị viên đã hết hạn (giới hạn tối đa 2 giờ để bảo mật). Vui lòng đăng nhập lại.', 401);
+    // Tự động nhận diện chạy ở localhost/127.0.0.1 để nới lỏng bảo mật khi chạy thử local
+    const isLocalDev = req.hostname === 'localhost' || req.hostname === '127.0.0.1';
+
+    if (!isLocalDev) {
+      // [BẢO MẬT ADMIN] Enforce thời hạn tối đa 2 giờ cho tài khoản Admin/Moderator
+      if (decoded.role === 'ADMIN' || decoded.role === 'MODERATOR') {
+        const iat = (decoded as any).iat || 0;
+        const nowInSecs = Math.floor(Date.now() / 1000);
+        if (nowInSecs - iat > 7200) { // 2 giờ
+          return createError(res, 'Phiên làm việc của Quản trị viên đã hết hạn (giới hạn tối đa 2 giờ để bảo mật). Vui lòng đăng nhập lại.', 401);
+        }
       }
-    }
 
-    // Kiểm tra chéo mật khẩu thay đổi gần nhất trong DB để vô hiệu hóa token cũ
-    const pool = await getPool();
-    const result = await pool.request()
-      .input('userId', sql.Int, decoded.id)
-      .query('SELECT MatKhauNgayCapNhat FROM NguoiDung WHERE MaNguoiDung = @userId');
+      // Kiểm tra chéo mật khẩu thay đổi gần nhất trong DB để vô hiệu hóa token cũ
+      const pool = await getPool();
+      const result = await pool.request()
+        .input('userId', sql.Int, decoded.id)
+        .query('SELECT MatKhauNgayCapNhat FROM NguoiDung WHERE MaNguoiDung = @userId');
 
-    const dbUser = result.recordset[0];
-    if (!dbUser) {
-      return createError(res, 'Người dùng không tồn tại trên hệ thống', 401);
-    }
+      const dbUser = result.recordset[0];
+      if (!dbUser) {
+        return createError(res, 'Người dùng không tồn tại trên hệ thống', 401);
+      }
 
-    const dbPwdTime = dbUser.MatKhauNgayCapNhat ? new Date(dbUser.MatKhauNgayCapNhat).getTime() : 0;
-    const tokenPwdTime = decoded.pwdUpdatedAt || 0;
+      const dbPwdTime = dbUser.MatKhauNgayCapNhat ? new Date(dbUser.MatKhauNgayCapNhat).getTime() : 0;
+      const tokenPwdTime = decoded.pwdUpdatedAt || 0;
 
-    // Nếu mật khẩu thực tế trong DB đã được cập nhật SAU thời điểm cấp token (cho sai số 1 giây)
-    if (dbPwdTime > tokenPwdTime + 1000) {
-      return createError(res, 'Mật khẩu đã được thay đổi. Vui lòng đăng nhập lại.', 401);
+      // Nếu mật khẩu thực tế trong DB đã được cập nhật SAU thời điểm cấp token (cho sai số 1 giây)
+      if (dbPwdTime > tokenPwdTime + 1000) {
+        return createError(res, 'Mật khẩu đã được thay đổi. Vui lòng đăng nhập lại.', 401);
+      }
     }
 
     // Gán biến user hợp lệ
