@@ -1,12 +1,11 @@
 import { z } from 'zod';
-import { STANDARD_UNITS } from './inventory.utils';
 
 export const addFoodSchema = z.object({
-  maNhom: z.number({ required_error: 'Mã nhóm là bắt buộc' }).int().positive('Mã nhóm phải là số nguyên dương'),
-  tenTP: z.string({ required_error: 'Tên thực phẩm là bắt buộc' })
+  maNhom: z.number().int().positive('Mã nhóm phải là số nguyên dương'),
+  tenTP: z.string()
     .min(2, 'Tên thực phẩm phải có ít nhất 2 ký tự')
     .max(100, 'Tên thực phẩm không được vượt quá 100 ký tự'),
-  soLuong: z.number({ required_error: 'Số lượng là bắt buộc' })
+  soLuong: z.number()
     .nonnegative('Số lượng không được âm')
     .max(999999, 'Số lượng quá lớn (tối đa 999,999)'),
   donVi: z.string().optional().or(z.null()).transform((val) => val || 'cái'),
@@ -19,14 +18,12 @@ export const addFoodSchema = z.object({
 });
 
 export const updateFoodSchema = z.object({
-  soLuong: z.number({ required_error: 'Số lượng là bắt buộc' })
+  soLuong: z.number()
     .nonnegative('Số lượng không được âm')
     .max(999999, 'Số lượng quá lớn (tối đa 999,999)'),
-  trangThai: z.enum(['CON_HAN', 'HE_HAN', 'HONG'], {
-    errorMap: () => ({ message: 'Trạng thái phải là CON_HAN, HE_HAN hoặc HONG' })
-  }).optional(),
+  trangThai: z.enum(['CON_HAN', 'HE_HAN', 'HONG']).optional(),
   viTri: z.string().max(100, 'Vị trí không được dài quá 100 ký tự').nullable().optional(),
-  version: z.number({ required_error: 'Version của thực phẩm là bắt buộc để kiểm soát xung đột OCC' })
+  version: z.number()
     .int()
     .positive('Version phải là số nguyên dương')
 });

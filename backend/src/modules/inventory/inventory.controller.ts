@@ -1,23 +1,55 @@
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
 import { InventoryService } from './inventory.service';
 import { createSuccess } from '../../core/utils/response';
 
 const svc = new InventoryService();
 
 export class InventoryController {
-  async getAll(req: Request, res: Response, next: NextFunction) {
-    try { return createSuccess(res, await svc.getInventory(Number(req.query.groupId))); } catch (e) { next(e); }
+  
+  async getAll(req: any, res: Response, next: NextFunction) {
+    try { 
+      const groupId = Number(req.query.groupId);
+      const data = await svc.getInventory(groupId, req.user.id);
+      return createSuccess(res, data); 
+    } catch (e) { next(e); }
   }
-  async getExpiring(req: Request, res: Response, next: NextFunction) {
-    try { return createSuccess(res, await svc.getExpiring(Number(req.query.groupId))); } catch (e) { next(e); }
+
+  async getExpiring(req: any, res: Response, next: NextFunction) {
+    try { 
+      const groupId = Number(req.query.groupId);
+      const data = await svc.getExpiring(groupId, req.user.id);
+      return createSuccess(res, data); 
+    } catch (e) { next(e); }
   }
-  async add(req: Request, res: Response, next: NextFunction) {
-    try { return createSuccess(res, await svc.addFood(req.body), 'Thêm thực phẩm thành công', 201); } catch (e) { next(e); }
+
+  async add(req: any, res: Response, next: NextFunction) {
+    try { 
+      const data = await svc.addFood(req.body, req.user.id);
+      return createSuccess(res, data, 'Thêm thực phẩm thành công', 201); 
+    } catch (e) { next(e); }
   }
-  async update(req: Request, res: Response, next: NextFunction) {
-    try { await svc.updateFood(Number(req.params.id), req.body); return createSuccess(res, null, 'Cập nhật thành công'); } catch (e) { next(e); }
+
+  async update(req: any, res: Response, next: NextFunction) {
+    try { 
+      const foodId = Number(req.params.id);
+      await svc.updateFood(foodId, req.body, req.user.id); 
+      return createSuccess(res, null, 'Cập nhật thành công'); 
+    } catch (e) { next(e); }
   }
-  async remove(req: Request, res: Response, next: NextFunction) {
-    try { await svc.deleteFood(Number(req.params.id)); return createSuccess(res, null, 'Xóa thành công'); } catch (e) { next(e); }
+
+  async remove(req: any, res: Response, next: NextFunction) {
+    try { 
+      const foodId = Number(req.params.id);
+      await svc.deleteFood(foodId, req.user.id); 
+      return createSuccess(res, null, 'Xóa thành công'); 
+    } catch (e) { next(e); }
+  }
+
+  async getLogs(req: any, res: Response, next: NextFunction) {
+    try {
+      const groupId = Number(req.params.groupId);
+      const data = await svc.getAuditLogs(groupId, req.user.id);
+      return createSuccess(res, data);
+    } catch (e) { next(e); }
   }
 }

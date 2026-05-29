@@ -229,7 +229,7 @@ export const mealPlanApi = {
   getToday: (groupId: number) => {
     const n = new Date();
     const localDate = `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`;
-    return request<{ success: boolean; data: any[] }>(`/meal-plan/today?groupId=${groupId}&date=${localDate}`);
+    return request<{ success: boolean; data: any[] }>(`/meal-plan/today?groupId=${groupId}&clientDate=${localDate}`);
   },
 
   getByDateRange: (groupId: number, start: string, end: string) =>
@@ -245,6 +245,23 @@ export const mealPlanApi = {
 
   remove: (id: number) =>
     request(`/meal-plan/${id}`, { method: 'DELETE' }),
+
+  checkIngredients: (maMon: number, soKhauPhan: number, groupId: number) =>
+    request<{ success: boolean; data: { enough: boolean; details: any[] } }>(
+      `/meal-plan/check-ingredients?maMon=${maMon}&soKhauPhan=${soKhauPhan}&groupId=${groupId}`
+    ),
+
+  addMissingToShopping: (maMon: number, soKhauPhan: number, groupId: number) =>
+    request<{ success: boolean; data: { success: boolean; listId: number } }>(
+      '/meal-plan/add-missing-to-shopping',
+      { method: 'POST', body: JSON.stringify({ maMon, soKhauPhan, groupId }) }
+    ),
+
+  copyMealPlan: (groupId: number, fromStart: string, fromEnd: string, toStart: string) =>
+    request<{ success: boolean; data: null }>(
+      '/meal-plan/copy-range',
+      { method: 'POST', body: JSON.stringify({ groupId, fromStart, fromEnd, toStart }) }
+    ),
 };
 
 // ────────────────────────────────────────────────

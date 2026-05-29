@@ -9,18 +9,21 @@ export function useInventory() {
   const { groupId } = useAuth();
   const [items, setItems] = useState<any[]>([]);
   const [expiring, setExpiring] = useState<any[]>([]);
+  const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
     if (!groupId) return;
     setLoading(true);
     try {
-      const [res, expRes] = await Promise.all([
+      const [res, expRes, logsRes] = await Promise.all([
         inventoryApi.getAll(groupId),
         inventoryApi.getExpiring(groupId),
+        inventoryApi.getLogs(groupId),
       ]);
       setItems(res.data || []);
       setExpiring(expRes.data || []);
+      setLogs(logsRes.data || []);
     } catch (e) {
       console.error('Inventory load error:', e);
     } finally {
@@ -45,7 +48,7 @@ export function useInventory() {
     await load();
   };
 
-  return { items, expiring, loading, addItem, updateItem, deleteItem, reload: load };
+  return { items, expiring, logs, loading, addItem, updateItem, deleteItem, reload: load };
 }
 
 // ────────────────────────────────────────────────
