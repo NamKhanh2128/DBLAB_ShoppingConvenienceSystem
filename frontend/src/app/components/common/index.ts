@@ -49,3 +49,4 @@ export { ViewStatDetailsModal } from "./ViewStatDetailsModal";
 
 // Common Modals
 export { FilterModal } from "./FilterModal";
+export { FamilyOnboardingPrompt } from "./FamilyOnboardingPrompt";

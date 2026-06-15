@@ -49,6 +49,19 @@ export class ReportsRepository {
           FROM KhoThucPham kp
           WHERE kp.MaNhom = @g AND kp.TrangThai = 'HET_HAN'
         ), 0) AS DECIMAL(12,2)) AS TongLangPhi,
+        CAST(ISNULL((
+          SELECT SUM((nk.SoLuongTruoc - nk.SoLuongSau) * ISNULL(
+            (SELECT TOP 1 sub.GiaThucTe 
+             FROM ChiTietMuaSam sub 
+             INNER JOIN DanhSachMuaSam subDs ON sub.MaDanhSach = subDs.MaDanhSach 
+             WHERE subDs.MaNhom = @g AND sub.TenThucPham = nk.TenTP AND sub.DaMua = 1 
+             ORDER BY subDs.NgayTao DESC), 
+            15000
+          ))
+          FROM NhatKyKho nk
+          WHERE nk.MaNhom = @g AND nk.HanhDong = 'TIEU_THU'
+            ${dateFilter.replace(/ds\.NgayTao/g, 'nk.NgayThucHien')}
+        ), 0) AS DECIMAL(12,2)) AS TongTietKiem,
         COUNT(DISTINCT CASE WHEN ds.TrangThai = 'HOAN_THANH' THEN ds.MaDanhSach END) AS SoBaoCao
       FROM DanhSachMuaSam ds
       LEFT JOIN ChiTietMuaSam ct ON ds.MaDanhSach = ct.MaDanhSach

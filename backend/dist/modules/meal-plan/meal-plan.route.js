@@ -1,0 +1,15 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const meal_plan_controller_1 = require("./meal-plan.controller");
+const router = (0, express_1.Router)();
+const ctrl = new meal_plan_controller_1.MealPlanController();
+router.get('/', ctrl.getByDateRange.bind(ctrl));
+router.get('/today', ctrl.getToday.bind(ctrl));
+router.get('/check-ingredients', ctrl.checkIngredients.bind(ctrl));
+router.post('/', ctrl.create.bind(ctrl));
+router.post('/add-missing-to-shopping', ctrl.addMissingToShopping.bind(ctrl));
+router.post('/copy-range', ctrl.copyRange.bind(ctrl));
+router.put('/:id', ctrl.update.bind(ctrl));
+router.delete('/:id', ctrl.remove.bind(ctrl));
+exports.default = router;

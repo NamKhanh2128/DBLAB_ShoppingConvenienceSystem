@@ -75,7 +75,7 @@ async function request<T>(
         onRefreshed(newToken);
       } else {
         localStorage.removeItem('groupId');
-        window.location.href = '/login?expired=true';
+        window.location.href = '/auth/login?expired=true';
         throw new Error('Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại.');
       }
     }
@@ -137,6 +137,27 @@ export const usersApi = {
       '/users/change-password',
       { method: 'PUT', body: JSON.stringify(data) }
     ),
+
+  deleteAccount: () =>
+    request<{ success: boolean; message: string }>(
+      '/users/account',
+      { method: 'DELETE' }
+    ),
+
+  uploadAvatar: (file: File) => {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    const token = getToken();
+    return fetch(`${BASE_URL}/users/avatar`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    }).then(async res => {
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Lỗi tải ảnh');
+      return data as { success: boolean; data: any };
+    });
+  },
 };
 
 // ────────────────────────────────────────────────
@@ -227,7 +248,7 @@ export const inventoryApi = {
     request(`/inventory/${id}`, { method: 'DELETE' }),
 
   getLogs: (groupId: number) =>
-    request<{ success: boolean; data: any[] }>(`/inventory/${groupId}/logs`),
+    request<{ success: boolean; data: any[] }>(`/inventory/logs?groupId=${groupId}`),
 };
 
 // ────────────────────────────────────────────────
@@ -364,6 +385,18 @@ export const familyApi = {
 
   removeMember: (groupId: number, userId: number) =>
     request(`/family/${groupId}/members/${userId}`, { method: 'DELETE' }),
+
+  updateMember: (groupId: number, userId: number, data: { hoTen?: string; soDienThoai?: string; email?: string }) =>
+    request<{ success: boolean; data: any }>(
+      `/family/${groupId}/members/${userId}`,
+      { method: 'PUT', body: JSON.stringify(data) }
+    ),
+
+  updateMemberRole: (groupId: number, userId: number, role: string) =>
+    request<{ success: boolean; data: any }>(
+      `/family/${groupId}/members/${userId}/role`,
+      { method: 'PATCH', body: JSON.stringify({ role }) }
+    ),
 
   transferLeadership: (groupId: number, newLeaderId: number) =>
     request(`/family/${groupId}/transfer-leadership`, {

@@ -364,13 +364,13 @@ export function MasterData() {
 
       {/* Delete Item */}
       <ConfirmDialog isOpen={isDeleteDialogOpen} onClose={() => setIsDeleteDialogOpen(false)} onConfirm={confirmDelete}
-        title="Xác nhận xóa" description={`Bạn có chắc muốn xóa "${selectedItem?.name}"?`} confirmText="Xóa" variant="danger" />
+        title="Xác nhận xóa" message={`Bạn có chắc muốn xóa "${selectedItem?.name}"?`} confirmText="Xóa" type="danger" />
 
       {/* Delete Category */}
       <ConfirmDialog isOpen={!!deleteCategory} onClose={() => setDeleteCategory(null)}
         onConfirm={() => { setCategories(p => p.filter(c => c.id !== deleteCategory?.id)); toast.success(`Đã xóa danh mục "${deleteCategory?.name}"`); setDeleteCategory(null); }}
-        title="Xóa danh mục" description={`Xóa danh mục "${deleteCategory?.name}" sẽ ảnh hưởng đến ${deleteCategory?.count} mục. Tiếp tục?`}
-        confirmText="Xóa" variant="danger" />
+        title="Xóa danh mục" message={`Xóa danh mục "${deleteCategory?.name}" sẽ ảnh hưởng đến ${deleteCategory?.count} mục. Tiếp tục?`}
+        confirmText="Xóa" type="danger" />
     </div>
   );
 }

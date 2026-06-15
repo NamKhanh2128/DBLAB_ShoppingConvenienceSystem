@@ -16,14 +16,17 @@ import {
   UseInventoryModal,
   FilterModal,
   ConfirmDialog,
+  FamilyOnboardingPrompt,
 } from "../../components/common";
 import { useInventory } from "../../hooks/useData";
+import { useAuth } from "../../context/AuthContext";
 import { getExpiryStatus, INVENTORY_UNITS } from "../../utils/inventory";
 
 
 
 export function Inventory() {
   const { success, error, info } = useToastContext();
+  const { groupId } = useAuth();
   const { items: rawItems, expiring, logs, loading, addItem, updateItem, deleteItem, reload } = useInventory();
 
   // Search & Filter state
@@ -162,28 +165,32 @@ export function Inventory() {
 
 
   // CRUD handlers
-  const handleAddSubmit = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!formName) {
-      error("Lỗi", "Vui lòng nhập tên thực phẩm");
-      return;
-    }
-    const qty = parseFloat(formQty);
-    if (isNaN(qty) || qty < 0) {
-      error("Lỗi", "Số lượng phải là số không âm");
-      return;
-    }
-
-    try {
-      await addItem({
+  const handleAddSubmit = async (dataOrEvent: any) => {
+    let payload: any;
+    
+    // Check if it is a FormEvent or has preventDefault
+    if (dataOrEvent && typeof dataOrEvent.preventDefault === 'function') {
+      dataOrEvent.preventDefault();
+      
+      if (!formName) {
+        error("Lỗi", "Vui lòng nhập tên thực phẩm");
+        return;
+      }
+      const qty = parseFloat(formQty);
+      if (isNaN(qty) || qty < 0) {
+        error("Lỗi", "Số lượng phải là số không âm");
+        return;
+      }
+      
+      payload = {
         tenTP: formName,
         soLuong: qty,
         donVi: formUnit,
         hanSuDung: formExpiry || null,
         viTri: formLocation,
-      });
-
-      success("✅ Thành công!", `"${formName}" đã được thêm vào kho.`);
+        danhMuc: formCategory,
+        ghiChu: formNotes
+      };
       
       // Clear form
       setFormName("");
@@ -191,6 +198,32 @@ export function Inventory() {
       setFormUnit("cái");
       setFormExpiry("");
       setFormNotes("");
+    } else {
+      // It's the modal form data object
+      if (!dataOrEvent || !dataOrEvent.name) {
+        error("Lỗi", "Vui lòng nhập tên thực phẩm");
+        return;
+      }
+      const qty = parseFloat(dataOrEvent.quantity);
+      if (isNaN(qty) || qty < 0) {
+        error("Lỗi", "Số lượng phải là số không âm");
+        return;
+      }
+      
+      payload = {
+        tenTP: dataOrEvent.name,
+        soLuong: qty,
+        donVi: dataOrEvent.unit,
+        hanSuDung: dataOrEvent.expiryDate || null,
+        viTri: dataOrEvent.location,
+        danhMuc: dataOrEvent.category,
+        ghiChu: dataOrEvent.notes
+      };
+    }
+
+    try {
+      await addItem(payload);
+      success("✅ Thành công!", `"${payload.tenTP}" đã được thêm vào kho.`);
     } catch (e: any) {
       error("Không thể thêm thực phẩm", e.message || "Lỗi hệ thống");
     }
@@ -249,6 +282,25 @@ export function Inventory() {
   const toggleGroupExpand = (groupId: string) => {
     setExpandedGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
   };
+
+  if (!groupId) {
+    return (
+      <div className="space-y-6 animate-slide-up pb-10">
+        {/* ─── HEADER ──────────────────────────────────────────────────────── */}
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-[var(--border-light)] pb-4">
+          <div>
+            <h1 className="text-3xl font-black text-[var(--text-dark)] tracking-tight mb-1 flex items-center gap-2">
+              Kho thực phẩm <span className="text-xl">🏪</span>
+            </h1>
+            <p className="text-[var(--text-muted)] text-sm font-medium">
+              Quản lý tủ lạnh, ngăn đá và tủ khô thông minh gia đình.
+            </p>
+          </div>
+        </div>
+        <FamilyOnboardingPrompt />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-slide-up pb-10">
@@ -484,8 +536,22 @@ export function Inventory() {
                           <Button
                             size="icon"
                             variant="ghost"
+                            className="w-7 h-7 hover:bg-blue-50 hover:text-blue-500"
+                            onClick={() => setViewItem(item)}
+                            title="Xem chi tiết"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
                             className="w-7 h-7 hover:bg-[var(--success)]/10 hover:text-[var(--success)]"
-                            onClick={() => handleQuickDecrement(item.isGroup ? item.batches[0] : item, 1)}
+                            onClick={() => {
+                              const target = item.isGroup
+                                ? (item.batches.find((b: any) => b.quantity > 0) || item.batches[0])
+                                : item;
+                              handleQuickDecrement(target, 1);
+                            }}
                             disabled={item.quantity <= 0}
                             title="Tiêu thụ 1"
                           >
@@ -495,7 +561,7 @@ export function Inventory() {
                             size="icon"
                             variant="ghost"
                             className="w-7 h-7 hover:bg-[var(--success)]/20 hover:text-[var(--success)]"
-                            onClick={() => setUseItemModal(item.isGroup ? item.batches[0] : item)}
+                            onClick={() => setUseItemModal(item.isGroup ? (item.batches.find((b: any) => b.quantity > 0) || item.batches[0]) : item)}
                             title="Tiêu thụ tùy chọn"
                           >
                             <Check className="w-3.5 h-3.5" />
@@ -721,7 +787,7 @@ export function Inventory() {
                     className="w-full bg-gradient-to-r from-[var(--success)] to-[#16A34A] text-white font-bold py-2.5 shadow-md hover-lift rounded-[var(--radius-btn)] mt-3 flex items-center justify-center gap-1.5"
                   >
                     <Plus className="w-4 h-4" />
-                    Thêm vào tủ lạnh
+                    Thêm vào {formLocation}
                   </Button>
                 </form>
 

@@ -37,20 +37,11 @@ export function AdminReports() {
 
   const handleExport = () => {
     setIsExporting(true);
-    toast.promise(
-      new Promise(resolve => setTimeout(resolve, 2000)),
-      {
-        loading: 'Đang chuẩn bị tệp báo cáo...',
-        success: () => {
-          setIsExporting(false);
-          return 'Báo cáo đã được tải xuống thành công!';
-        },
-        error: () => {
-          setIsExporting(false);
-          return 'Có lỗi xảy ra khi xuất báo cáo.';
-        },
-      }
-    );
+    toast.info('Đang chuẩn bị tệp báo cáo...');
+    setTimeout(() => {
+      setIsExporting(false);
+      toast.success('Báo cáo đã được tải xuống thành công!');
+    }, 2000);
   };
 
   return (

@@ -24,9 +24,9 @@ export class InventoryService {
     return this.repo.getByGroup(groupId);
   }
 
-  async getExpiring(groupId: number, userId: number) {
+  async getExpiring(groupId: number, userId: number, days: number = 3) {
     await this.checkGroupMembership(groupId, userId);
-    return this.repo.getExpiring(groupId, 3);
+    return this.repo.getExpiring(groupId, days);
   }
 
   async addFood(data: any, creatorId: number) {

@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Textarea } from "../ui/textarea";
 import Modal from "./Modal";
 import { recipesApi } from "../../services/api";
+import { useAuth } from "../../context/AuthContext";
 
 interface AddMealPlanModalProps {
   isOpen: boolean;
@@ -27,6 +28,7 @@ export function AddMealPlanModal({
   initialRecipeName = "",
   initialRecipeId,
 }: AddMealPlanModalProps) {
+  const { groupId } = useAuth();
   const [formData, setFormData] = useState({
     date: "",
     mealType: "Trưa",
@@ -48,12 +50,12 @@ export function AddMealPlanModal({
       }));
       // Fetch real recipes from API
       setLoadingRecipes(true);
-      recipesApi.getAll()
+      recipesApi.getAll(groupId || undefined)
         .then(res => setApiRecipes((res.data || []).map((r: any) => ({ id: r.MaMon, name: r.TenMon }))))
         .catch(() => {})
         .finally(() => setLoadingRecipes(false));
     }
-  }, [isOpen, initialRecipeName, initialRecipeId]);
+  }, [isOpen, initialRecipeName, initialRecipeId, groupId]);
 
   const handleRecipeSelect = (value: string) => {
     const found = apiRecipes.find(r => String(r.id) === value);

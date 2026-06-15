@@ -16,20 +16,11 @@ export function AdminSettings() {
 
   const handleSave = (section: string) => {
     setIsSaving(true);
-    toast.promise(
-      new Promise(resolve => setTimeout(resolve, 800)),
-      {
-        loading: `Đang lưu cấu hình ${section}...`,
-        success: () => {
-          setIsSaving(false);
-          return `Cấu hình ${section} đã được lưu thành công!`;
-        },
-        error: () => {
-          setIsSaving(false);
-          return "Đã xảy ra lỗi khi lưu cấu hình.";
-        },
-      }
-    );
+    toast.info(`Đang lưu cấu hình ${section}...`);
+    setTimeout(() => {
+      setIsSaving(false);
+      toast.success(`Cấu hình ${section} đã được lưu thành công!`);
+    }, 800);
   };
 
   return (

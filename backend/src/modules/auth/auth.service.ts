@@ -50,8 +50,42 @@ export class AuthService {
     // Tên được làm sạch và chuẩn hóa trước khi lưu
     const cleanName = data.hoTen.trim().replace(/\s+/g, ' ');
     const created = await this.repo.create({ hoTen: cleanName, email, matKhauHash: hashed });
+
+    // Tạo nhóm gia đình mặc định cho người dùng vừa đăng ký
+    const pool = await getPool();
+    const groupName = `Gia đình của ${cleanName}`;
+    const groupRes = await pool.request()
+      .input('name', sql.NVarChar(100), groupName)
+      .input('leader', sql.Int, created.MaNguoiDung)
+      .query(`
+        INSERT INTO NhomGiaDinh (TenNhom, TruongNhom, MaxThanhVien)
+        OUTPUT INSERTED.MaNhom
+        VALUES (@name, @leader, 10)
+      `);
+    const groupId = groupRes.recordset[0].MaNhom;
+
+    // Thêm leader vào bảng thành viên
+    await pool.request()
+      .input('g', sql.Int, groupId)
+      .input('u', sql.Int, created.MaNguoiDung)
+      .query(`INSERT INTO ThanhVienNhom (MaNhom, MaNguoiDung, VaiTro) VALUES (@g, @u, 'LEADER')`);
+
+    // Sinh mã mời mặc định dài hạn (100 năm, tối đa 100 lượt dùng)
+    const code = crypto.randomBytes(4).toString('hex').toUpperCase();
+    const expiresAt = new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000);
+    await pool.request()
+      .input('groupId', sql.Int, groupId)
+      .input('creatorId', sql.Int, created.MaNguoiDung)
+      .input('code', sql.NVarChar(8), code)
+      .input('maxUses', sql.Int, 100)
+      .input('expires', sql.DateTime2, expiresAt)
+      .query(`
+        INSERT INTO FamilyInvites (Id, MaNhom, Code, TaoBoiId, MaxUses, ExpiresAt)
+        VALUES (NEWID(), @groupId, @code, @creatorId, @maxUses, @expires)
+      `);
+
     const { MatKhauHash, ...safe } = created;
-    return safe;
+    return { ...safe, MaNhom: groupId };
   }
 
   async getMe(userId: number) {

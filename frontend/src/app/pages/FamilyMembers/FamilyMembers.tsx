@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Plus, Mail, Crown, Phone, Calendar, Shield, Eye, Pencil, Trash2, Copy, Loader2, RefreshCw, Info, Bell } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
@@ -49,10 +49,65 @@ function mapMember(raw: any) {
 }
 
 export function FamilyMembers() {
-  const { success, error, info } = useToastContext();
-  const { user, groupId } = useAuth();
+  const { success, error, info, warning } = useToastContext();
+  const { user, groupId, setGroupId } = useAuth();
 
   const [members, setMembers] = useState<any[]>([]);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [joinInviteCode, setJoinInviteCode] = useState("");
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [joiningGroup, setJoiningGroup] = useState(false);
+
+  const handleCreateGroup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newGroupName.trim()) {
+      warning("Tên nhóm trống", "Vui lòng nhập tên nhóm gia đình.");
+      return;
+    }
+    setCreatingGroup(true);
+    try {
+      const res = await familyApi.create(newGroupName.trim());
+      if (res.success && res.data) {
+        const newGroupId = res.data.MaNhom ?? res.data.groupId ?? res.data.id;
+        if (newGroupId) {
+          setGroupId(Number(newGroupId));
+          success("🎉 Tạo gia đình thành công!", `Chào mừng bạn đến với nhóm "${res.data.TenNhom}"`);
+        } else {
+          throw new Error("Không lấy được mã nhóm mới");
+        }
+      }
+    } catch (err: any) {
+      error("Lỗi tạo nhóm", err.message || "Không thể tạo nhóm gia đình.");
+    } finally {
+      setCreatingGroup(false);
+    }
+  };
+
+  const handleJoinGroup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!joinInviteCode.trim()) {
+      warning("Mã mời trống", "Vui lòng nhập mã mời gia đình.");
+      return;
+    }
+    setJoiningGroup(true);
+    try {
+      const res = await familyApi.joinFamily(joinInviteCode.trim());
+      if (res.success && res.data) {
+        const newGroupId = res.data.MaNhom;
+        if (newGroupId) {
+          setGroupId(Number(newGroupId));
+          success("🎉 Gia nhập gia đình thành công!", `Bạn đã tham gia nhóm "${res.data.TenNhom}"`);
+        } else {
+          throw new Error("Không lấy được mã nhóm");
+        }
+      }
+    } catch (err: any) {
+      error("Lỗi gia nhập gia đình", err.message || "Không thể gia nhập nhóm gia đình.");
+    } finally {
+      setJoiningGroup(false);
+    }
+  };
+
   const [loading, setLoading] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
   const [editMember, setEditMember] = useState<any | null>(null);
@@ -151,10 +206,39 @@ export function FamilyMembers() {
     }
   };
 
-  const handleEdit = (_data: any) => {
-    success("✅ Cập nhật thành công!", `Thông tin đã được cập nhật.`);
-    setEditMember(null);
-    fetchMembers();
+  const handleEdit = async (_data: any) => {
+    if (!editMember || !groupId) return;
+    try {
+      // Cập nhật thông tin cơ bản
+      await familyApi.updateMember(groupId, editMember.id, {
+        hoTen: _data.name,
+        soDienThoai: _data.phone,
+        email: _data.email,
+      });
+
+      // Cập nhật vai trò nếu có thay đổi
+      const roleMap: Record<string, string> = {
+        "Trưởng nhóm": "LEADER",
+        "LEADER": "LEADER",
+        "Thành viên": "MEMBER",
+        "MEMBER": "MEMBER",
+        "Khách": "VIEWER",
+        "VIEWER": "VIEWER"
+      };
+      
+      const newRole = roleMap[_data.role] || "MEMBER";
+      const oldRole = roleMap[editMember.role] || "MEMBER";
+      
+      if (newRole !== oldRole) {
+        await familyApi.updateMemberRole(groupId, editMember.id, newRole);
+      }
+
+      success("✅ Cập nhật thành công!", `Thông tin thành viên đã được cập nhật.`);
+      setEditMember(null);
+      await fetchMembers();
+    } catch (e: any) {
+      error("Lỗi cập nhật", e.message || "Không thể cập nhật thông tin thành viên.");
+    }
   };
 
   const handleDelete = async () => {
@@ -201,9 +285,24 @@ export function FamilyMembers() {
     }
   };
 
-  const handleManagePermissions = (_data: any) => {
-    success("✅ Cập nhật quyền thành công!", `Quyền của ${managePerm?.name} đã được cập nhật.`);
-    setManagePerm(null);
+  const handleManagePermissions = async (_data: any) => {
+    if (!managePerm || !groupId) return;
+    try {
+      // Phân tích các quyền để map về vai trò MEMBER hoặc VIEWER
+      // Nếu có bất kỳ quyền ghi/thao tác nào được tích chọn, đặt vai trò là MEMBER, ngược lại là VIEWER (Khách)
+      const hasWriteAccess = Object.keys(_data).some(key => 
+        !key.endsWith('_view') && !key.endsWith('_export') && _data[key] === true
+      );
+      
+      const newRole = hasWriteAccess ? "MEMBER" : "VIEWER";
+      
+      await familyApi.updateMemberRole(groupId, managePerm.id, newRole);
+      success("✅ Cập nhật quyền thành công!", `Quyền của ${managePerm?.name} đã được cập nhật.`);
+      setManagePerm(null);
+      await fetchMembers();
+    } catch (e: any) {
+      error("Lỗi cập nhật quyền", e.message || "Không thể cập nhật quyền thành viên.");
+    }
   };
 
   const handleCopyInviteCode = () => {
@@ -215,6 +314,113 @@ export function FamilyMembers() {
   // Xác minh quyền chủ hộ của người dùng hiện tại
   const currentUserObj = members.find(m => m.id === (user?.MaNguoiDung ?? user?.id));
   const isCurrentUserLeader = currentUserObj?.role === "Trưởng nhóm";
+
+  if (!groupId) {
+    return (
+      <div className="space-y-6 animate-slide-up pb-10">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-[var(--border-light)] pb-4">
+          <div>
+            <h1 className="text-3xl font-black text-[var(--text-dark)] tracking-tight mb-1 flex items-center gap-2">
+              Thiết lập gia đình <span className="text-xl">👨‍👩‍👧‍👦</span>
+            </h1>
+            <p className="text-[var(--text-muted)] text-sm font-medium">
+              Tạo mới hoặc tham gia nhóm gia đình để đồng bộ hóa kế hoạch và quản lý thực phẩm.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-6 max-w-4xl mx-auto pt-4">
+          {/* Card 1: Tạo gia đình mới */}
+          <Card className="border-none shadow-[var(--shadow-card)] rounded-[var(--radius)] bg-white overflow-hidden flex flex-col justify-between">
+            <CardHeader className="bg-gradient-purple text-white p-6">
+              <CardTitle className="text-lg font-black flex items-center gap-2 text-white">
+                🏠 Tạo nhóm gia đình mới
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-6 flex-1 flex flex-col justify-between space-y-4">
+              <p className="text-sm text-[var(--text-muted)] leading-relaxed">
+                Bắt đầu một nhóm gia đình mới của riêng bạn. Bạn sẽ là <strong>Trưởng nhóm</strong>, có quyền quản lý thành viên, tạo mã mời và phân quyền.
+              </p>
+              
+              <form onSubmit={handleCreateGroup} className="space-y-4 pt-2">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider block">Tên gia đình</label>
+                  <input
+                    type="text"
+                    placeholder="Ví dụ: Gia đình hạnh phúc, Nhà của..."
+                    value={newGroupName}
+                    onChange={(e) => setNewGroupName(e.target.value)}
+                    className="w-full px-3 py-2.5 border border-[var(--border-light)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--purple-deep)] font-medium text-sm"
+                    required
+                  />
+                </div>
+                
+                <Button
+                  type="submit"
+                  disabled={creatingGroup}
+                  className="w-full h-11 bg-gradient-purple text-white font-bold rounded-xl shadow-[var(--shadow-btn)] hover-lift transition-smooth flex items-center justify-center gap-2"
+                >
+                  {creatingGroup ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Đang tạo...
+                    </>
+                  ) : (
+                    "Tạo nhóm gia đình"
+                  )}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+
+          {/* Card 2: Gia nhập bằng mã mời */}
+          <Card className="border-none shadow-[var(--shadow-card)] rounded-[var(--radius)] bg-white overflow-hidden flex flex-col justify-between">
+            <CardHeader className="bg-gradient-gold text-white p-6">
+              <CardTitle className="text-lg font-black flex items-center gap-2 text-white">
+                🔑 Gia nhập bằng mã mời
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-6 flex-1 flex flex-col justify-between space-y-4">
+              <p className="text-sm text-[var(--text-muted)] leading-relaxed">
+                Nhập mã mời gồm 8 ký tự được chia sẻ bởi thành viên khác trong gia đình bạn để gia nhập nhóm và chia sẻ tủ lạnh.
+              </p>
+              
+              <form onSubmit={handleJoinGroup} className="space-y-4 pt-2">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider block">Mã mời</label>
+                  <input
+                    type="text"
+                    placeholder="Nhập mã 8 ký tự (ví dụ: ABC123EF)"
+                    value={joinInviteCode}
+                    onChange={(e) => setJoinInviteCode(e.target.value)}
+                    className="w-full px-3 py-2.5 border border-[var(--border-light)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--gold)] font-medium text-sm uppercase tracking-wider"
+                    maxLength={8}
+                    required
+                  />
+                </div>
+                
+                <Button
+                  type="submit"
+                  disabled={joiningGroup}
+                  className="w-full h-11 bg-gradient-gold text-white font-bold rounded-xl shadow-[var(--shadow-btn)] hover-lift transition-smooth flex items-center justify-center gap-2"
+                >
+                  {joiningGroup ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Đang gia nhập...
+                    </>
+                  ) : (
+                    "Gia nhập gia đình"
+                  )}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-slide-up">

@@ -1,4 +1,4 @@
-import { createBrowserRouter } from "react-router";
+import { createBrowserRouter, Navigate } from "react-router";
 
 // Đã thêm ngoặc nhọn {} cho tất cả các import để khớp với Named Export
 import { Homepage } from "./pages/Homepage/Homepage";
@@ -48,7 +48,7 @@ export const router = createBrowserRouter([
     path: "/app",
     element: <MainLayout />,
     children: [
-      { index: true, element: <Dashboard /> },
+      { index: true, element: <Navigate to="/app/dashboard" replace /> },
       { path: "dashboard", element: <Dashboard /> },
       { path: "shopping-list", element: <ShoppingList /> },
       { path: "inventory", element: <Inventory /> },

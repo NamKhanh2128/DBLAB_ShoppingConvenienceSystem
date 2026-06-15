@@ -9,7 +9,7 @@ import { Input } from "../../components/ui/input";
 import { Card, CardContent } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
 import { useToastContext } from "../../context/ToastContext";
-import { AddRecipeModal, ViewRecipeModal, FilterModal, AddMealPlanModal } from "../../components/common";
+import { AddRecipeModal, ViewRecipeModal, FilterModal, AddMealPlanModal, ConfirmDialog, FamilyOnboardingPrompt } from "../../components/common";
 import { useRecipes, useMealPlan } from "../../hooks/useData";
 import { useAuth } from "../../context/AuthContext";
 
@@ -64,6 +64,8 @@ function mapRecipe(raw: any) {
   };
 }
 
+const DEFAULT_STEPS = ["Không có hướng dẫn nấu ăn cho công thức này."];
+
 // ─────────────────────────────────────────────────────────────────────────────
 // CookingModal — Step-by-step mode + "Đã nấu xong" trừ kho
 // ─────────────────────────────────────────────────────────────────────────────
@@ -85,7 +87,7 @@ function CookingModal({
 
   const steps = recipe.steps.length > 0
     ? recipe.steps
-    : ["Không có hướng dẫn nấu ăn cho công thức này."];
+    : DEFAULT_STEPS;
 
   // ==========================================
   // BỘ ĐẾM THỜI GIAN NẤU ĂN (TIMER) CHUYÊN NGHIỆP
@@ -493,6 +495,7 @@ export function Recipes() {
   const [viewRecipe, setViewRecipe] = useState<ReturnType<typeof mapRecipe> | null>(null);
   const [cookingRecipe, setCookingRecipe] = useState<ReturnType<typeof mapRecipe> | null>(null);
   const [addToPlanRecipe, setAddToPlanRecipe] = useState<{ id: number; name: string } | null>(null);
+  const [deleteRecipeConfirm, setDeleteRecipeConfirm] = useState<ReturnType<typeof mapRecipe> | null>(null);
   void info;
 
   const categories = useMemo(() =>
@@ -541,15 +544,23 @@ export function Recipes() {
     } catch (e: any) { error("Lỗi", e.message); }
   };
 
-  const handleDeleteRecipe = async (recipe: ReturnType<typeof mapRecipe>) => {
+  const handleDeleteRecipe = (recipe: ReturnType<typeof mapRecipe>) => {
     if (!recipe.isPrivate) {
       error("Không thể xóa", "Đây là công thức hệ thống, không thể xóa.");
       return;
     }
+    setDeleteRecipeConfirm(recipe);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteRecipeConfirm) return;
     try {
-      await deleteRecipe(recipe.id);
-      success(`🗑️ Đã xóa "${recipe.name}"`, "Công thức đã được xóa.");
-    } catch (e: any) { error("Lỗi", e.message); }
+      await deleteRecipe(deleteRecipeConfirm.id);
+      success(`🗑️ Đã xóa "${deleteRecipeConfirm.name}"`, "Công thức đã được xóa.");
+      setDeleteRecipeConfirm(null);
+    } catch (e: any) {
+      error("Lỗi", e.message);
+    }
   };
 
   const handleCookRecipe = useCallback(async (id: number, servings: number) => {
@@ -568,6 +579,7 @@ export function Recipes() {
         buoi: data.mealType === "Sáng" ? "SANG" : data.mealType === "Trưa" ? "TRUA" : data.mealType === "Phụ" ? "PHU" : "TOI",
         maMon: addToPlanRecipe?.id || 1,
         tenMon: addToPlanRecipe?.name || data.recipeName,
+        soKhauPhan: Number(data.servings || 1),
         ghiChu: data.notes || "",
       });
       await loadToday();
@@ -580,6 +592,23 @@ export function Recipes() {
     setShowSuggest(true);
     await loadSuggestions();
   };
+
+  if (!groupId) {
+    return (
+      <div className="space-y-6 animate-slide-up">
+        {/* ── Header ─────────────────────────────────────────────────── */}
+        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-black text-[var(--text-dark)] mb-2">Công thức nấu ăn</h1>
+            <p className="text-[var(--text-muted)]">
+              Tìm kiếm và lưu trữ công thức nấu ăn của gia đình.
+            </p>
+          </div>
+        </div>
+        <FamilyOnboardingPrompt />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-slide-up">
@@ -809,6 +838,17 @@ export function Recipes() {
           initialRecipeId={addToPlanRecipe.id}
         />
       )}
+
+      <ConfirmDialog
+        isOpen={!!deleteRecipeConfirm}
+        onClose={() => setDeleteRecipeConfirm(null)}
+        onConfirm={handleDeleteConfirm}
+        title="Xóa công thức?"
+        message={`Bạn có chắc muốn xóa công thức "${deleteRecipeConfirm?.name}" không? Hành động này không thể khôi phục.`}
+        confirmText="Xóa"
+        cancelText="Hủy"
+        type="danger"
+      />
     </div>
   );
 }

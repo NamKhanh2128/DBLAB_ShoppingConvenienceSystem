@@ -1,21 +1,47 @@
 import { useState, useEffect } from "react";
-import { Bell, Lock, User, Globe, Camera, Shield, ChevronRight, Eye, EyeOff, Check, Loader2 } from "lucide-react";
+import { Bell, Lock, User, Globe, Camera, Shield, ChevronRight, Eye, EyeOff, Check, Loader2, Users, Copy } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { Switch } from "../../components/ui/switch";
 import { Label } from "../../components/ui/label";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
-import { Avatar, AvatarFallback } from "../../components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "../../components/ui/avatar";
 import { Badge } from "../../components/ui/badge";
 import { useToastContext } from "../../context/ToastContext";
-import { Modal } from "../../components/common";
+import { Modal, ConfirmDialog } from "../../components/common";
 import { useAuth } from "../../context/AuthContext";
-import { usersApi } from "../../services/api";
+import { usersApi, familyApi } from "../../services/api";
 import { useLanguage } from "../../context/LanguageContext";
 
 export function Settings() {
   const { success, error, info, warning } = useToastContext();
-  const { user, setUser } = useAuth();
+  const { user, setUser, groupId } = useAuth();
+
+  const [inviteCode, setInviteCode] = useState<string | null>(null);
+  const [loadingCode, setLoadingCode] = useState(false);
+
+  useEffect(() => {
+    const fetchInviteCode = async () => {
+      if (!groupId) return;
+      setLoadingCode(true);
+      try {
+        const res = await familyApi.getInvites(groupId);
+        const activeInvite = res.data?.find((i: any) => !i.IsDeleted && new Date(i.ExpiresAt) > new Date());
+        if (activeInvite) {
+          setInviteCode(activeInvite.Code);
+        } else {
+          // If no active code, generate one
+          const genRes = await familyApi.generateInvite(groupId, 100);
+          setInviteCode(genRes.data?.code || genRes.data?.MaCode || null);
+        }
+      } catch (e) {
+        console.warn("Không thể tải mã mời:", e);
+      } finally {
+        setLoadingCode(false);
+      }
+    };
+    fetchInviteCode();
+  }, [groupId]);
 
   // Profile state — khởi tạo từ auth context (dữ liệu thật)
   const [profile, setProfile] = useState({
@@ -46,6 +72,20 @@ export function Settings() {
     familyActivity: true,
     weeklyReport: false,
   });
+
+  // Load notifications from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem("user_notifications");
+    if (saved) {
+      try {
+        setNotifications(JSON.parse(saved));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  }, []);
+
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // Language — connected to global LanguageContext
   const { language, setLanguage } = useLanguage();
@@ -120,10 +160,12 @@ export function Settings() {
     }
   };
 
-  // ─── HANDLER: Toggle notification (local + có thể gọi API sau) ───
+  // ─── HANDLER: Toggle notification (local + saved to localStorage) ───
   const handleToggleNotification = (key: keyof typeof notifications) => {
     const newValue = !notifications[key];
-    setNotifications(prev => ({ ...prev, [key]: newValue }));
+    const updated = { ...notifications, [key]: newValue };
+    setNotifications(updated);
+    localStorage.setItem("user_notifications", JSON.stringify(updated));
     const label: Record<string, string> = {
       expiryAlert: "Cảnh báo sắp hết hạn",
       shoppingReminder: "Nhắc mua sắm",
@@ -142,7 +184,42 @@ export function Settings() {
   };
 
   const handleDeleteAccount = () => {
-    warning("⚠️ Tính năng đang bảo trì", "Xóa tài khoản sẽ được hỗ trợ trong phiên bản tiếp theo.");
+    setShowDeleteConfirm(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    try {
+      await usersApi.deleteAccount();
+      success("🗑️ Đã xóa tài khoản", "Tài khoản của bạn đã được xóa vĩnh viễn.");
+      localStorage.removeItem("token");
+      localStorage.removeItem("groupId");
+      window.location.href = "/auth/login";
+    } catch (e: any) {
+      error("Lỗi xóa tài khoản", e.message || "Không thể xóa tài khoản.");
+    } finally {
+      setShowDeleteConfirm(false);
+    }
+  };
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    if (file.size > 5 * 1024 * 1024) {
+      error("Lỗi", "Kích thước ảnh đại diện phải nhỏ hơn 5MB");
+      return;
+    }
+    
+    try {
+      info("📷 Tải ảnh", "Đang tải ảnh đại diện lên...");
+      const res = await usersApi.uploadAvatar(file);
+      if (res.success) {
+        if (setUser && res.data) setUser(res.data);
+        success("✅ Thành công!", "Ảnh đại diện đã được cập nhật.");
+      }
+    } catch (err: any) {
+      error("Lỗi tải ảnh đại diện", err.message || "Không thể tải ảnh.");
+    }
   };
 
   const displayName = profile.name || "Người dùng";
@@ -171,16 +248,25 @@ export function Settings() {
           <div className="flex items-center gap-5">
             <div className="relative">
               <Avatar className="w-20 h-20 border-4 border-[var(--gold)]/20 shadow-lg">
+                <AvatarImage src={user?.Avatar || user?.avatar || ""} />
                 <AvatarFallback className="bg-gradient-gold text-white text-2xl font-black">
                   {avatarLetter}
                 </AvatarFallback>
               </Avatar>
               <button
+                type="button"
                 className="absolute -bottom-1 -right-1 w-7 h-7 bg-[var(--purple-deep)] rounded-full flex items-center justify-center shadow-md hover:scale-110 transition-transform"
-                onClick={() => info("📷 Tính năng đang phát triển", "Tải ảnh đại diện sẽ sớm ra mắt!")}
+                onClick={() => document.getElementById("avatar-upload")?.click()}
               >
                 <Camera className="w-3.5 h-3.5 text-white" />
               </button>
+              <input
+                type="file"
+                id="avatar-upload"
+                className="hidden"
+                accept="image/*"
+                onChange={handleAvatarChange}
+              />
             </div>
             <div>
               <p className="font-bold text-[var(--text-dark)]">{displayName}</p>
@@ -250,6 +336,54 @@ export function Settings() {
           </form>
         </CardContent>
       </Card>
+
+      {/* Family Section */}
+      {groupId && (
+        <Card className="border-none shadow-[var(--shadow-card)] rounded-[var(--radius)]">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-xl font-black">
+              <div className="w-8 h-8 bg-gradient-gold rounded-[10px] flex items-center justify-center">
+                <Users className="w-4 h-4 text-white" />
+              </div>
+              Nhóm gia đình & Mã liên kết
+            </CardTitle>
+            <CardDescription>Mã mời các thành viên tham gia gia đình của bạn</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="p-4 bg-[var(--card-bg)] border border-[var(--border-light)] rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <p className="text-xs text-[var(--text-muted)] font-semibold uppercase tracking-wider">Mã liên kết gia đình</p>
+                {loadingCode ? (
+                  <div className="flex items-center gap-2 text-sm text-[var(--text-muted)] font-medium py-1">
+                    <Loader2 className="w-4 h-4 animate-spin text-[var(--gold)]" />
+                    Đang tải mã mời...
+                  </div>
+                ) : inviteCode ? (
+                  <code className="text-2xl font-black text-[var(--gold)] tracking-widest block py-1">{inviteCode}</code>
+                ) : (
+                  <p className="text-sm text-[var(--danger)] font-semibold">Chưa có mã liên kết. Vui lòng bấm tạo mới.</p>
+                )}
+                <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                  * Thành viên khác nhập mã 8 ký tự này tại trang <strong>Thiết lập gia đình</strong> để chia sẻ tủ lạnh.
+                </p>
+              </div>
+              {inviteCode && (
+                <Button
+                  variant="outline"
+                  className="border-[var(--gold)] text-[var(--gold)] hover:bg-[var(--gold)] hover:text-white rounded-[var(--radius-sm)] font-bold shrink-0 self-start md:self-auto"
+                  onClick={() => {
+                    navigator.clipboard.writeText(inviteCode);
+                    success("📋 Đã sao chép mã mời vào clipboard!", inviteCode);
+                  }}
+                >
+                  <Copy className="w-4 h-4 mr-2" />
+                  Sao chép mã
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Notifications */}
       <Card className="border-none shadow-[var(--shadow-card)] rounded-[var(--radius)]">
@@ -440,6 +574,17 @@ export function Settings() {
           )}
         </form>
       </Modal>
+
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDeleteConfirm}
+        title="Xóa tài khoản vĩnh viễn?"
+        message="Bạn có chắc chắn muốn xóa tài khoản của mình không? Hành động này không thể hoàn tác và tất cả dữ liệu cá nhân của bạn sẽ bị xóa sạch."
+        confirmText="Xóa tài khoản"
+        cancelText="Hủy"
+        type="danger"
+      />
     </div>
   );
 }

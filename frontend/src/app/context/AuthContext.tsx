@@ -10,6 +10,7 @@ interface AuthContextType {
   logout: () => void;
   setUser: (user: any) => void;
   groupId: number | null;
+  setGroupId: (id: number | null) => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -24,6 +25,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const isAuthenticated = !!user && !!getToken();
 
+  const updateGroupId = (id: number | null) => {
+    setGroupId(id);
+    if (id !== null) {
+      localStorage.setItem('groupId', String(id));
+    } else {
+      localStorage.removeItem('groupId');
+    }
+  };
+
   const persistAuth = (u: any, token: string) => {
     if (!token) return;
     setToken(token);
@@ -31,8 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUserState(u);
     const gid = u?.MaNhom ?? u?.groupId ?? u?.maNhom ?? Number(localStorage.getItem('groupId')) ?? null;
     if (gid) {
-      setGroupId(Number(gid));
-      localStorage.setItem('groupId', String(gid));
+      updateGroupId(Number(gid));
     }
   };
 
@@ -79,7 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const checkRes = await fetch('http://localhost:5000/api/v1/auth/refresh', { method: 'POST', credentials: 'include' });
         if (checkRes.ok) {
-          const refreshData = await checkRes.ok ? await checkRes.json() : null;
+          const refreshData = await checkRes.json();
           if (refreshData?.data?.token) {
             setToken(refreshData.data.token);
             const meRes = await authApi.me();
@@ -88,8 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setUserState(refreshedUser);
             const gid = refreshedUser?.MaNhom ?? refreshedUser?.groupId ?? refreshedUser?.maNhom ?? groupId;
             if (gid) {
-              setGroupId(Number(gid));
-              localStorage.setItem('groupId', String(gid));
+              updateGroupId(Number(gid));
             }
             return;
           }
@@ -117,7 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, isAuthenticated, login, register, logout, setUser: updateUser, groupId }}>
+    <AuthContext.Provider value={{ user, isLoading, isAuthenticated, login, register, logout, setUser: updateUser, groupId, setGroupId: updateGroupId }}>
       {children}
     </AuthContext.Provider>
   );

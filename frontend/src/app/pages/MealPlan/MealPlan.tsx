@@ -8,16 +8,16 @@ import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
 import { useToastContext } from "../../context/ToastContext";
-import { AddMealPlanModal, GenerateMealPlanModal, ViewRecipeModal, ConfirmDialog } from "../../components/common";
+import { AddMealPlanModal, GenerateMealPlanModal, ViewRecipeModal, ConfirmDialog, FamilyOnboardingPrompt } from "../../components/common";
 import { useMealPlan } from "../../hooks/useData";
 import { mealPlanApi, recipesApi } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 
 const weekDays = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
-const mealTimes = ["Sáng", "Trưa", "Tối"];
+const mealTimes = ["Sáng", "Trưa", "Tối", "Phụ"];
 
-const buoiMap: Record<string, string> = { "Sáng": "SANG", "Trưa": "TRUA", "Tối": "TOI" };
-const buoiRevMap: Record<string, string> = { "SANG": "Sáng", "TRUA": "Trưa", "TOI": "Tối" };
+const buoiMap: Record<string, string> = { "Sáng": "SANG", "Trưa": "TRUA", "Tối": "TOI", "Phụ": "PHU" };
+const buoiRevMap: Record<string, string> = { "SANG": "Sáng", "TRUA": "Trưa", "TOI": "Tối", "PHU": "Phụ" };
 
 // Helper format date local
 const fmtDateLocal = (d: Date) => {
@@ -102,17 +102,17 @@ export function MealPlan() {
 
   // Enriched Grid Map from weekMeals
   const mealGrid = useMemo(() => {
-    const grid: Record<string, Record<string, any>> = {};
+    const grid: Record<string, Record<string, any[]>> = {};
     currentWeekRange.days.forEach(day => {
       grid[day.dateStr] = {};
-      mealTimes.forEach(t => { grid[day.dateStr][t] = null; });
+      mealTimes.forEach(t => { grid[day.dateStr][t] = []; });
     });
 
     weekMeals.forEach(meal => {
       const ngayStr = meal.Ngay ? meal.Ngay.split('T')[0] : "";
       const timeKey = buoiRevMap[meal.Buoi] || meal.Buoi;
       if (grid[ngayStr] && timeKey) {
-        grid[ngayStr][timeKey] = meal;
+        grid[ngayStr][timeKey].push(meal);
       }
     });
     return grid;
@@ -196,7 +196,7 @@ export function MealPlan() {
         selectedMealForCheck.SoKhauPhan || 4,
         groupId || 0
       );
-      success("🛒 Mua sắm siêu tốc thành công!", res.message);
+      success("🛒 Mua sắm siêu tốc thành công!", "Đã thêm tất cả nguyên liệu còn thiếu vào danh sách mua sắm.");
       // Re-trigger check to update UI
       handleSelectMealForCheck(selectedMealForCheck);
     } catch (e: any) {
@@ -230,9 +230,71 @@ export function MealPlan() {
   };
 
   const handleGenerate = async (_data: any) => {
-    await fetchMealPlans();
-    success('🤖 Tạo tự động thành công!', 'Kế hoạch ăn uống của tuần đã được chuẩn bị.');
-    setShowGenerate(false);
+    if (!groupId) return;
+    try {
+      // 1. Fetch suggested recipes first (based on inventory)
+      const suggestRes = await recipesApi.suggest(groupId);
+      let recipesPool = suggestRes.data || [];
+      
+      // If suggestions are empty or short, fetch all recipes to build a robust pool
+      if (recipesPool.length < 5) {
+        const allRes = await recipesApi.getAll(groupId);
+        const allRecipes = allRes.data || [];
+        // Combine suggested recipes with all other recipes, avoiding duplicates
+        const existingIds = new Set(recipesPool.map((r: any) => r.id || r.MaMon));
+        allRecipes.forEach((r: any) => {
+          const rId = r.id || r.MaMon;
+          if (rId && !existingIds.has(rId)) {
+            recipesPool.push(r);
+          }
+        });
+      }
+      
+      if (recipesPool.length === 0) {
+        warning("Không thể tạo tự động", "Chưa có công thức nấu ăn nào trong hệ thống để tự động tạo kế hoạch.");
+        return;
+      }
+      
+      // 2. Generate date array between startDate and endDate
+      const start = new Date(_data.startDate);
+      const end = new Date(_data.endDate);
+      const daysList: string[] = [];
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        daysList.push(fmtDateLocal(new Date(d)));
+      }
+      
+      // 3. Map selectedMeals to UI labels / API constants
+      const mealMapping: Record<string, string> = {
+        breakfast: "Sáng",
+        lunch: "Trưa",
+        dinner: "Tối",
+        snack: "Phụ",
+      };
+      const activeMeals = _data.selectedMeals.map((m: string) => mealMapping[m]).filter(Boolean);
+      
+      // 4. Create meal plans sequentially
+      let recipeIndex = 0;
+      for (const dateStr of daysList) {
+        for (const mealTime of activeMeals) {
+          const recipe = recipesPool[recipeIndex % recipesPool.length];
+          recipeIndex++;
+          
+          await addMeal({
+            ngay: dateStr,
+            buoi: buoiMap[mealTime] || "TOI",
+            maMon: recipe.id || recipe.MaMon,
+            soKhauPhan: Number(_data.servings || 4),
+            ghiChu: "Tạo tự động bởi AI",
+          });
+        }
+      }
+      
+      await fetchMealPlans();
+      success('🤖 Tạo tự động thành công!', 'Kế hoạch ăn uống đã được chuẩn bị theo gợi ý thực phẩm có sẵn.');
+      setShowGenerate(false);
+    } catch (e: any) {
+      error("Lỗi tạo tự động", e.message || "Không thể tự động tạo kế hoạch.");
+    }
   };
 
   const handleAddSlotClick = (day: { label: string; dateStr: string }, time: string) => {
@@ -250,6 +312,25 @@ export function MealPlan() {
 
   const totalMealsCount = weekMeals.length;
   const totalSlotsCount = 21; // 7 days * 3 shifts
+
+  if (!groupId) {
+    return (
+      <div className="space-y-6 animate-slide-up pb-10">
+        {/* ─── HEADER ──────────────────────────────────────────────────────── */}
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-[var(--border-light)] pb-4">
+          <div>
+            <h1 className="text-3xl font-black text-[var(--text-dark)] tracking-tight mb-1 flex items-center gap-2">
+              Kế hoạch bữa ăn <span className="text-xl">🗓️</span>
+            </h1>
+            <p className="text-[var(--text-muted)] text-sm font-medium">
+              Thực đơn dinh dưỡng tuần của gia đình.
+            </p>
+          </div>
+        </div>
+        <FamilyOnboardingPrompt />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-slide-up pb-10">
@@ -365,61 +446,62 @@ export function MealPlan() {
                     <tr key={time} className="border-b border-[var(--border-light)] last:border-none">
                       <td className="p-4 font-black text-gray-500 uppercase tracking-wider">{time}</td>
                       {currentWeekRange.days.map((day) => {
-                        const meal = mealGrid[day.dateStr]?.[time];
+                        const meals = mealGrid[day.dateStr]?.[time] || [];
                         const todayStr = fmtDateLocal(new Date());
                         const isToday = day.dateStr === todayStr;
                         const isPast = new Date(day.dateStr).getTime() < new Date(todayStr).getTime();
 
                         return (
                           <td key={`${day.dateStr}-${time}`} className={`p-2 border-l border-[var(--border-light)] ${isToday ? "bg-[var(--purple-deep)]/5" : ""}`}>
-                            {meal ? (
-                              <div
-                                onClick={() => handleSelectMealForCheck(meal)}
-                                className={`p-3 rounded-xl border-2 transition-all cursor-pointer relative group ${
-                                  selectedMealForCheck?.MaKeHoach === meal.MaKeHoach
-                                    ? "bg-[var(--purple-deep)]/5 border-[var(--purple-deep)] shadow-sm"
-                                    : "bg-[var(--card-bg)] border-transparent hover:border-[var(--purple-deep)]/30 hover:shadow"
-                                }`}
-                              >
-                                <div className="flex items-center gap-1.5 min-w-0">
-                                  <span className="text-base flex-shrink-0">🍲</span>
-                                  <span className="font-bold text-[var(--text-dark)] truncate block flex-grow">
-                                    {meal.TenMon}
-                                  </span>
-                                </div>
-                                
-                                <div className="flex items-center gap-1 text-[8px] text-[var(--text-muted)] font-semibold mt-2.5">
-                                  <Users className="w-2.5 h-2.5" />
-                                  <span>{meal.SoKhauPhan || 4} suất</span>
-                                </div>
-
-                                {meal.MaMon === null && (
-                                  <Badge className="bg-red-50 text-red-600 border border-red-200 mt-2 text-[8px] font-bold py-0 px-1 rounded-sm w-full block text-center truncate">
-                                    🚫 Công thức đã bị xóa
-                                  </Badge>
-                                )}
-
-                                {/* Delete button on hover */}
-                                <button
-                                  className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-100 text-red-600 flex items-center justify-center opacity-0 group-hover:opacity-100 shadow-sm transition-opacity hover:bg-red-200"
-                                  onClick={(e) => { e.stopPropagation(); handleRemoveMeal(meal); }}
+                            <div className="space-y-2">
+                              {meals.map((meal: any) => (
+                                <div
+                                  key={meal.MaKeHoach}
+                                  onClick={() => handleSelectMealForCheck(meal)}
+                                  className={`p-3 rounded-xl border-2 transition-all cursor-pointer relative group ${
+                                    selectedMealForCheck?.MaKeHoach === meal.MaKeHoach
+                                      ? "bg-[var(--purple-deep)]/5 border-[var(--purple-deep)] shadow-sm"
+                                      : "bg-[var(--card-bg)] border-transparent hover:border-[var(--purple-deep)]/30 hover:shadow"
+                                  }`}
                                 >
-                                  <Trash2 className="w-3 h-3" />
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <span className="text-base flex-shrink-0">🍲</span>
+                                    <span className="font-bold text-[var(--text-dark)] truncate block flex-grow">
+                                      {meal.TenMon}
+                                    </span>
+                                  </div>
+                                  
+                                  <div className="flex items-center gap-1 text-[8px] text-[var(--text-muted)] font-semibold mt-2.5">
+                                    <Users className="w-2.5 h-2.5" />
+                                    <span>{meal.SoKhauPhan || 4} suất</span>
+                                  </div>
+
+                                  {meal.MaMon === null && (
+                                    <Badge className="bg-red-50 text-red-600 border border-red-200 mt-2 text-[8px] font-bold py-0 px-1 rounded-sm w-full block text-center truncate">
+                                      🚫 Công thức đã bị xóa
+                                    </Badge>
+                                  )}
+
+                                  {/* Delete button on hover */}
+                                  <button
+                                    className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-100 text-red-600 flex items-center justify-center opacity-0 group-hover:opacity-100 shadow-sm transition-opacity hover:bg-red-200"
+                                    onClick={(e) => { e.stopPropagation(); handleRemoveMeal(meal); }}
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              ))}
+                              
+                              {!isPast && (
+                                <button
+                                  className="w-full py-2 rounded-xl border border-dashed border-gray-300 flex items-center justify-center transition-all hover:border-[var(--purple-deep)] hover:bg-[var(--purple-deep)]/5 text-gray-400 hover:text-[var(--purple-deep)]"
+                                  onClick={() => handleAddSlotClick(day, time)}
+                                  title="Thêm món cho bữa này"
+                                >
+                                  <Plus className="w-4 h-4 transition-transform group-hover:scale-110" />
                                 </button>
-                              </div>
-                            ) : (
-                              <button
-                                disabled={isPast}
-                                className={`w-full p-3.5 rounded-xl border border-dashed border-gray-300 flex items-center justify-center transition-all ${
-                                  isPast 
-                                    ? "opacity-30 cursor-not-allowed bg-gray-100/50" 
-                                    : "hover:border-[var(--purple-deep)] hover:bg-[var(--purple-deep)]/5 text-gray-400 hover:text-[var(--purple-deep)]"
-                                }`}
-                                onClick={() => handleAddSlotClick(day, time)}
-                              >
-                                <Plus className="w-4 h-4 transition-transform group-hover:scale-110" />
-                              </button>
-                            )}
+                              )}
+                            </div>
                           </td>
                         );
                       })}

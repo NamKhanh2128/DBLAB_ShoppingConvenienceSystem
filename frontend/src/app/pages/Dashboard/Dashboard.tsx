@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router";
 import {
   ShoppingCart,
@@ -24,9 +24,10 @@ import {
   PieChart, Pie, Cell,
 } from 'recharts';
 import { useToastContext } from "../../context/ToastContext";
-import { QuickActionModal, AddMealPlanModal, ViewInventoryDetailsModal } from "../../components/common";
+import { QuickActionModal, AddMealPlanModal, ViewInventoryDetailsModal, FamilyOnboardingPrompt } from "../../components/common";
 import { useDashboardStats, useMealPlan, useInventory } from "../../hooks/useData";
 import { useAuth } from "../../context/AuthContext";
+import { familyApi, recipesApi } from "../../services/api";
 
 
 const chartColors = [
@@ -39,7 +40,7 @@ const chartColors = [
 
 export function Dashboard() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { groupId, user } = useAuth();
   const { success, info, error } = useToastContext();
   const { stats, loading: statsLoading, reload: reloadStats } = useDashboardStats();
   const { todayMeals, addMeal, loadToday } = useMealPlan();
@@ -48,6 +49,36 @@ export function Dashboard() {
   const [showQuickAction, setShowQuickAction] = useState(false);
   const [showAddMeal, setShowAddMeal] = useState(false);
   const [selectedInventoryItem, setSelectedInventoryItem] = useState<any>(null);
+
+  // Real data for footer stats (LỖI 1.1)
+  const [recipesCount, setRecipesCount] = useState(0);
+  const [membersCount, setMembersCount] = useState(0);
+  const navTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null); // LỖI 9.3
+
+  // Load recipes count and members count for footer stats
+  const loadFooterStats = useCallback(async () => {
+    try {
+      const [recipesRes, membersRes] = await Promise.all([
+        recipesApi.getAll(groupId ?? undefined),
+        groupId ? familyApi.getMembers(groupId) : Promise.resolve({ data: [] }),
+      ]);
+      setRecipesCount((recipesRes.data || []).length);
+      setMembersCount((membersRes.data || []).length);
+    } catch (e) {
+      // silent fail for footer stats
+    }
+  }, [groupId]);
+
+  useEffect(() => {
+    loadFooterStats();
+  }, [loadFooterStats]);
+
+  // Cleanup timeout on unmount (LỖI 9.3)
+  useEffect(() => {
+    return () => {
+      if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
+    };
+  }, []);
 
   const expenseData = useMemo(() => (
     stats.expenseTrend.map((item: any) => ({
@@ -151,10 +182,11 @@ export function Dashboard() {
   const handleAddMeal = async (data: any) => {
     try {
       await addMeal({
-        ngay: new Date().toISOString().split('T')[0],
-        buoi: data.mealType === 'Sáng' ? 'SANG' : data.mealType === 'Trưa' ? 'TRUA' : 'TOI',
-        maMon: 1,
+        ngay: data.date || new Date().toISOString().split('T')[0], // LỖI 1.3: use selected date
+        buoi: data.mealType === 'Sáng' ? 'SANG' : data.mealType === 'Trưa' ? 'TRUA' : data.mealType === 'Phụ' ? 'PHU' : 'TOI',
+        maMon: data.recipeId || null, // LỖI 1.2: use selected recipe ID
         tenMon: data.recipeName || "Món mới",
+        soKhauPhan: Number(data.servings || 4),
       });
       await Promise.all([loadToday(), reloadStats(), reloadInventory()]);
       success("Thêm bữa ăn thành công!", `Đã thêm "${data.recipeName}" vào kế hoạch hôm nay.`);
@@ -179,6 +211,25 @@ export function Dashboard() {
     { label: 'Nhập kho mới', icon: Package, color: 'var(--success)', action: "inventory" },
     { label: 'Xem báo cáo', icon: TrendingUp, color: 'var(--food-orange)', action: "report" },
   ];
+
+  if (!groupId) {
+    return (
+      <div className="space-y-6 animate-slide-up">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-black text-[var(--text-dark)] mb-2">
+              Dashboard
+            </h1>
+            <p className="text-[var(--text-muted)]">
+              Chào {getHour()}, <span className="text-[var(--gold)] font-semibold">{user?.HoTen || user?.hoTen || 'thành viên'}</span>!
+            </p>
+          </div>
+        </div>
+        <FamilyOnboardingPrompt />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-slide-up">
@@ -500,7 +551,9 @@ export function Dashboard() {
                 className="flex items-center gap-3 p-3 bg-[var(--card-bg)] rounded-[var(--radius-sm)] hover:bg-white hover:shadow-md transition-smooth group cursor-pointer"
                 onClick={() => {
                   info(`${meal.dish}`, `${meal.time} — Xem chi tiết trong Kế hoạch bữa ăn`);
-                  setTimeout(() => navigate("/app/meal-plan"), 600);
+                  // LỖI 9.3: cancel previous timeout before creating a new one
+                  if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
+                  navTimeoutRef.current = setTimeout(() => navigate("/app/meal-plan"), 600);
                 }}
               >
                 <span className="text-2xl">{meal.emoji}</span>
@@ -588,17 +641,17 @@ export function Dashboard() {
         </Card>
       </div>
 
-      {/* Footer Stats */}
+      {/* Footer Stats — Real data (LỖI 1.1) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div
           className="bg-white rounded-[var(--radius)] p-4 shadow-[var(--shadow-card)] hover-lift transition-smooth cursor-pointer"
           onClick={() => navigate("/app/recipes")}
         >
           <p className="text-xs text-[var(--text-muted)] mb-1 font-medium uppercase tracking-wide">
-            Công thức mới
+            Công thức nấu ăn
           </p>
-          <p className="text-2xl font-black text-[var(--text-dark)]">24</p>
-          <Progress value={65} className="mt-2 h-1.5" />
+          <p className="text-2xl font-black text-[var(--text-dark)]">{statsLoading ? '...' : recipesCount}</p>
+          <Progress value={recipesCount > 0 ? Math.min(100, recipesCount * 4) : 0} className="mt-2 h-1.5" />
         </div>
         <div
           className="bg-white rounded-[var(--radius)] p-4 shadow-[var(--shadow-card)] hover-lift transition-smooth cursor-pointer"
@@ -607,22 +660,29 @@ export function Dashboard() {
           <p className="text-xs text-[var(--text-muted)] mb-1 font-medium uppercase tracking-wide">
             Thành viên
           </p>
-          <p className="text-2xl font-black text-[var(--text-dark)]">5</p>
-          <Progress value={100} className="mt-2 h-1.5" />
+          <p className="text-2xl font-black text-[var(--text-dark)]">{statsLoading ? '...' : membersCount}</p>
+          <Progress value={membersCount > 0 ? Math.min(100, membersCount * 20) : 0} className="mt-2 h-1.5" />
         </div>
         <div className="bg-white rounded-[var(--radius)] p-4 shadow-[var(--shadow-card)] hover-lift transition-smooth">
           <p className="text-xs text-[var(--text-muted)] mb-1 font-medium uppercase tracking-wide">
             Hoàn thành
           </p>
-          <p className="text-2xl font-black text-[var(--text-dark)]">87%</p>
-          <Progress value={87} className="mt-2 h-1.5" />
+          <p className="text-2xl font-black text-[var(--text-dark)]">
+            {stats.shoppingListCount > 0
+              ? `${Math.round(stats.shoppingDoneCount / stats.shoppingListCount * 100)}%`
+              : '0%'}
+          </p>
+          <Progress
+            value={stats.shoppingListCount > 0 ? Math.round(stats.shoppingDoneCount / stats.shoppingListCount * 100) : 0}
+            className="mt-2 h-1.5"
+          />
         </div>
         <div className="bg-white rounded-[var(--radius)] p-4 shadow-[var(--shadow-card)] hover-lift transition-smooth">
           <p className="text-xs text-[var(--text-muted)] mb-1 font-medium uppercase tracking-wide">
-            Streak
+            Bữa hôm nay
           </p>
-          <p className="text-2xl font-black text-[var(--text-dark)]">12 🔥</p>
-          <Progress value={40} className="mt-2 h-1.5" />
+          <p className="text-2xl font-black text-[var(--text-dark)]">{todayMeals.length} 🍽️</p>
+          <Progress value={todayMeals.length > 0 ? Math.min(100, todayMeals.length * 33) : 0} className="mt-2 h-1.5" />
         </div>
       </div>
 

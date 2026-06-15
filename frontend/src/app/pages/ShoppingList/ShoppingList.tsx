@@ -17,8 +17,10 @@ import { useToastContext } from "../../context/ToastContext";
 import {
   AddShoppingListModal, AddShoppingItemModal, EditShoppingItemModal,
   ViewShoppingItemModal, ShareShoppingListModal, FilterModal, ConfirmDialog,
+  FamilyOnboardingPrompt,
 } from "../../components/common";
 import { useShopping } from "../../hooks/useData";
+import { useAuth } from "../../context/AuthContext";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Mappers
@@ -112,6 +114,7 @@ function RestockConfirmModal({
 // ─────────────────────────────────────────────────────────────────────────────
 export function ShoppingList() {
   const { success, error, info, warning } = useToastContext();
+  const { groupId } = useAuth();
   const {
     lists: rawLists, loading,
     loadLists, loadItems, createList, deleteList: apiDeleteList,
@@ -150,7 +153,7 @@ export function ShoppingList() {
   useEffect(() => {
     if (!selectedListId) return;
     loadItems(selectedListId).then(data => setRawItems(data));
-  }, [selectedListId]);
+  }, [selectedListId, loadItems]);
 
   const items = useMemo(() => rawItems.map(mapItem), [rawItems]);
   const selectedList = lists.find(l => l.id === selectedListId);
@@ -165,7 +168,7 @@ export function ShoppingList() {
   const totalItems = filteredItems.length;
   const progress = totalItems > 0 ? (completedItems / totalItems) * 100 : 0;
   const totalEstimate = items.reduce((s, i) => s + i.price, 0);
-  const purchasedCost = items.filter(i => i.done).reduce((s, i) => s + i.actualPrice || i.price, 0);
+  const purchasedCost = items.filter(i => i.done).reduce((s, i) => s + (i.actualPrice || i.price), 0);
   const remainingCost = totalEstimate - purchasedCost;
   const doneItemsCount = items.filter(i => i.done).length;
 
@@ -257,12 +260,94 @@ export function ShoppingList() {
   };
 
   const handleShare = () => {
-    success("📤 Chia sẻ thành công!", "Đã chia sẻ danh sách tới thành viên gia đình.");
+    const shareText = `Danh sách mua sắm: ${selectedList?.name || 'Danh sách'}\n` +
+      items.map(i => `- [${i.done ? 'x' : ' '}] ${i.name} (${i.quantity} ${i.unit})`).join('\n');
+    if (navigator.share) {
+      navigator.share({
+        title: selectedList?.name || 'Danh sách mua sắm',
+        text: shareText,
+        url: window.location.href
+      }).then(() => {
+        success("📤 Chia sẻ thành công!", "Đã chia sẻ danh sách.");
+      }).catch((err) => {
+        if (err.name !== 'AbortError') {
+          error("Lỗi chia sẻ", err.message);
+        }
+      });
+    } else {
+      navigator.clipboard.writeText(shareText).then(() => {
+        success("📋 Đã sao chép vào bộ nhớ tạm!", "Nội dung danh sách đã được copy.");
+      }).catch((err) => {
+        error("Lỗi sao chép", err.message);
+      });
+    }
   };
 
   const handleExportPDF = () => {
-    info("📄 Xuất PDF", "Đang tạo file PDF...");
-    setTimeout(() => success("✅ Xuất PDF thành công!", "File đã được tải xuống."), 1500);
+    if (!selectedList || items.length === 0) {
+      error("Lỗi", "Không có dữ liệu để xuất PDF");
+      return;
+    }
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      error("Lỗi", "Không thể mở cửa sổ in. Vui lòng cho phép popup.");
+      return;
+    }
+    const itemsHtml = items.map(item => `
+      <tr style="border-bottom: 1px solid #ddd;">
+        <td style="padding: 8px; text-align: center;">${item.done ? '✓' : '☐'}</td>
+        <td style="padding: 8px;">${item.name}</td>
+        <td style="padding: 8px; text-align: center;">${item.quantity} ${item.unit}</td>
+        <td style="padding: 8px; text-align: right;">${item.price.toLocaleString()}₫</td>
+        <td style="padding: 8px; text-align: right;">${item.actualPrice ? item.actualPrice.toLocaleString() + '₫' : '-'}</td>
+        <td style="padding: 8px;">${item.assignee || ''}</td>
+      </tr>
+    `).join('');
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>${selectedList.name}</title>
+          <style>
+            body { font-family: DejaVu Sans, Arial, sans-serif; margin: 40px; color: #333; }
+            h1 { text-align: center; color: #333; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th { background-color: #f2f2f2; padding: 10px; border-bottom: 2px solid #ddd; text-align: left; }
+            .header-info { margin-bottom: 20px; }
+          </style>
+        </head>
+        <body>
+          <h1>DANH SÁCH MUA SẮM</h1>
+          <div class="header-info">
+            <p><strong>Tên danh sách:</strong> ${selectedList.name}</p>
+            <p><strong>Ngày tạo:</strong> ${selectedList.date || new Date().toLocaleDateString('vi-VN')}</p>
+            <p><strong>Trạng thái:</strong> ${selectedList.status === 'hoan_thanh' ? 'Đã hoàn thành' : 'Đang thực hiện'}</p>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 5%; text-align: center;">Đã mua</th>
+                <th style="width: 45%;">Tên thực phẩm</th>
+                <th style="width: 15%; text-align: center;">Số lượng</th>
+                <th style="width: 15%; text-align: right;">Giá dự kiến</th>
+                <th style="width: 15%; text-align: right;">Giá thực tế</th>
+                <th style="width: 15%;">Người phụ trách</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itemsHtml}
+            </tbody>
+          </table>
+          <script>
+            window.onload = function() {
+              window.print();
+              window.close();
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
   };
 
   /** Hoàn thành mua sắm + nhập kho */
@@ -302,6 +387,21 @@ export function ShoppingList() {
   };
 
   // ── Render ────────────────────────────────────────────────────────
+  if (!groupId) {
+    return (
+      <div className="space-y-6 animate-slide-up">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-black text-[var(--text-dark)] mb-2">Danh sách mua sắm</h1>
+            <p className="text-[var(--text-muted)]">Quản lý và phân công nhiệm vụ mua sắm cho cả gia đình 🛒</p>
+          </div>
+        </div>
+        <FamilyOnboardingPrompt />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 animate-slide-up">
       {/* Header */}
@@ -618,7 +718,7 @@ export function ShoppingList() {
       <AddShoppingItemModal isOpen={showAddItem} onClose={() => setShowAddItem(false)} onSave={handleAddItem} mode="add" />
       {editItem && <EditShoppingItemModal isOpen={!!editItem} onClose={() => setEditItem(null)} onSubmit={handleEditItem} item={editItem} />}
       {viewItem && <ViewShoppingItemModal isOpen={!!viewItem} onClose={() => setViewItem(null)} item={viewItem} />}
-      <ShareShoppingListModal isOpen={showShare} onClose={() => setShowShare(false)} listName={selectedList?.name} onSubmit={handleShare} />
+      <ShareShoppingListModal isOpen={showShare} onClose={() => setShowShare(false)} listName={selectedList?.name} />
       <FilterModal isOpen={showFilter} onClose={() => setShowFilter(false)} onApply={() => setShowFilter(false)} />
 
       {/* Confirm: Xóa item */}

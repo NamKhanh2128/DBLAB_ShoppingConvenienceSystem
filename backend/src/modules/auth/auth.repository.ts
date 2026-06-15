@@ -6,7 +6,11 @@ export class AuthRepository {
     const pool = await getPool();
     const result = await pool.request()
       .input('email', sql.NVarChar, email.trim().toLowerCase())
-      .query('SELECT * FROM NguoiDung WHERE LOWER(Email) = @email');
+      .query(`
+        SELECT u.*, (SELECT TOP 1 MaNhom FROM ThanhVienNhom WHERE MaNguoiDung = u.MaNguoiDung) AS MaNhom
+        FROM NguoiDung u
+        WHERE LOWER(u.Email) = @email
+      `);
     return result.recordset[0] || null;
   }
 
@@ -15,10 +19,11 @@ export class AuthRepository {
     const result = await pool.request()
       .input('id', sql.Int, id)
       .query(`
-        SELECT MaNguoiDung, HoTen, Email, SoDienThoai, Bio,
-               VaiTro, TrangThai, NgayTao, NgayCapNhat
-        FROM NguoiDung
-        WHERE MaNguoiDung = @id
+        SELECT u.MaNguoiDung, u.HoTen, u.Email, u.SoDienThoai, u.Bio,
+               u.VaiTro, u.TrangThai, u.NgayTao, u.NgayCapNhat,
+               (SELECT TOP 1 MaNhom FROM ThanhVienNhom WHERE MaNguoiDung = u.MaNguoiDung) AS MaNhom
+        FROM NguoiDung u
+        WHERE u.MaNguoiDung = @id
       `);
     return result.recordset[0] || null;
   }

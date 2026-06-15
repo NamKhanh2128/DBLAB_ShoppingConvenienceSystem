@@ -7,14 +7,17 @@ import { Input } from "../../components/ui/input";
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useReports } from "../../hooks/useData";
 import { ExportReportModal } from "../../components/common/ExportReportModal";
+import { FamilyOnboardingPrompt } from "../../components/common";
 import { useToastContext } from "../../context/ToastContext";
 import { Link } from "react-router";
+import { useAuth } from "../../context/AuthContext";
 
 const categoryColors = ['#10B981', '#EF4444', '#F59E0B', '#3B82F6', '#8B5CF6'];
 
 export function Reports() {
   const { reports, summary, loading, applyFilters, filters } = useReports();
   const { success, error, info, warning } = useToastContext();
+  const { groupId } = useAuth();
 
   const [activeFilterTab, setActiveFilterTab] = useState<"7days" | "30days" | "12months" | "custom">("30days");
   const [customRange, setCustomRange] = useState({ startDate: "", endDate: "" });
@@ -77,7 +80,7 @@ export function Reports() {
 
   const totalSpend = summary?.TongChiPhi || 0;
   const totalWaste = summary?.TongLangPhi || 0;
-  const savings = Math.max(0, totalSpend * 0.15); // Ước tính tiết kiệm 15% qua kiểm soát mua sắm
+  const savings = summary?.TongTietKiem || 0;
 
   // Chuẩn bị dữ liệu biểu đồ chi tiêu
   const monthlyData = useMemo(() => {
@@ -245,6 +248,25 @@ export function Reports() {
       success("Đang mở hộp thoại in báo cáo (PDF).");
     }
   };
+
+  if (!groupId) {
+    return (
+      <div className="space-y-6 print:p-8 print:bg-white">
+        {/* Header báo cáo */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[var(--border-light)] pb-4 print:border-b-2 print:pb-6">
+          <div>
+            <h1 className="text-3xl font-extrabold text-[var(--text-dark)] tracking-tight" style={{ fontFamily: 'var(--font-heading)' }}>
+              Báo cáo & Thống kê
+            </h1>
+            <p className="text-[var(--text-muted)] mt-1">
+              Phân tích số liệu tài chính, dinh dưỡng và tối ưu hóa ngân sách gia đình thông minh.
+            </p>
+          </div>
+        </div>
+        <FamilyOnboardingPrompt />
+      </div>
+    );
+  }
 
   if (loading) {
     return (

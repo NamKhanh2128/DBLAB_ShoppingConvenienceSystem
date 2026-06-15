@@ -1,0 +1,16 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const admin_controller_1 = require("./admin.controller");
+const role_middleware_1 = require("../../core/middleware/role.middleware");
+const router = (0, express_1.Router)();
+const ctrl = new admin_controller_1.AdminController();
+router.use((0, role_middleware_1.authorizeRole)(['ADMIN', 'MODERATOR']));
+router.get('/dashboard', ctrl.getDashboard.bind(ctrl));
+router.get('/users', ctrl.getUsers.bind(ctrl));
+router.patch('/users/:id/status', ctrl.updateStatus.bind(ctrl));
+router.patch('/users/:id/role', ctrl.updateRole.bind(ctrl));
+router.delete('/users/:id', ctrl.deleteUser.bind(ctrl));
+router.get('/audit-logs', ctrl.getAuditLogs.bind(ctrl));
+router.post('/cleanup-fake-users', ctrl.cleanupFakeUsers.bind(ctrl));
+exports.default = router;
