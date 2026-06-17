@@ -38,8 +38,8 @@ class UsersService {
         const isValid = await (0, hash_1.comparePassword)(dto.currentPassword, user.MatKhauHash);
         if (!isValid)
             throw { statusCode: 401, message: 'Mật khẩu hiện tại không đúng' };
-        if (dto.newPassword.length < 8) {
-            throw { statusCode: 400, message: 'Mật khẩu mới phải có ít nhất 8 ký tự' };
+        if (dto.newPassword.length < 5) {
+            throw { statusCode: 400, message: 'Mật khẩu mới phải có ít nhất 5 ký tự' };
         }
         const hashed = await (0, hash_1.hashPassword)(dto.newPassword);
         await this.repo.updatePassword(id, hashed);

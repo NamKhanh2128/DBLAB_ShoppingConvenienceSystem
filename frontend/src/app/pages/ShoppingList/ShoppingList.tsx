@@ -141,10 +141,15 @@ export function ShoppingList() {
   const [deleteListModal, setDeleteListModal] = useState(false);
   const [restockLoading, setRestockLoading] = useState(false);
   const [mergeLoading, setMergeLoading] = useState(false);
+  const [itemFilters, setItemFilters] = useState<{ status: string; category: string; priceMin: string; priceMax: string }>({
+    status: "all", category: "all", priceMin: "", priceMax: "",
+  });
 
-  // Auto-select first list
+  // Auto-select first list, or clear selection if selected list was deleted
   useEffect(() => {
-    if (lists.length > 0 && !selectedListId) {
+    if (lists.length === 0) {
+      setSelectedListId(null);
+    } else if (!selectedListId || !lists.find(l => l.id === selectedListId)) {
       setSelectedListId(lists[0].id);
     }
   }, [lists, selectedListId]);
@@ -158,10 +163,21 @@ export function ShoppingList() {
   const items = useMemo(() => rawItems.map(mapItem), [rawItems]);
   const selectedList = lists.find(l => l.id === selectedListId);
 
-  const filteredItems = useMemo(() =>
-    items.filter(item => item.name.toLowerCase().includes(searchQuery.toLowerCase())),
-    [items, searchQuery]
-  );
+  const filteredItems = useMemo(() => {
+    const categoryMap: Record<string, string> = {
+      meat: "Thịt", vegetable: "Rau củ", dairy: "Sữa", seafood: "Hải sản", beverage: "Đồ uống",
+    };
+    const mappedCategory = categoryMap[itemFilters.category] || null;
+    return items.filter(item => {
+      if (!item.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+      if (itemFilters.status === "active" && item.done) return false;
+      if (itemFilters.status === "completed" && !item.done) return false;
+      if (mappedCategory && item.category !== mappedCategory) return false;
+      if (itemFilters.priceMin && item.price < Number(itemFilters.priceMin)) return false;
+      if (itemFilters.priceMax && item.price > Number(itemFilters.priceMax)) return false;
+      return true;
+    });
+  }, [items, searchQuery, itemFilters]);
 
   // Stats
   const completedItems = filteredItems.filter(i => i.done).length;
@@ -219,6 +235,7 @@ export function ShoppingList() {
         donVi: data.unit || "",
         giaDuKien: parseInt(data.price || "0"),
         danhMucHang: data.category || null,
+        ghiChu: data.note || null,
         nguoiPhuTrach: null,
       });
       await refreshItems();
@@ -239,8 +256,9 @@ export function ShoppingList() {
       await apiUpdateItem(selectedListId, editItem.id, {
         tenThucPham: data.name,
         soLuong: parseFloat(data.quantity) || 1,
-        donVi: data.unit || "",
+        donVi: editItem.unit || "",
         giaDuKien: parseInt(data.price || "0"),
+        danhMucHang: data.category || null,
       });
       await refreshItems();
       success("✅ Cập nhật thành công!", "Thông tin món đã được cập nhật.");
@@ -283,6 +301,9 @@ export function ShoppingList() {
     }
   };
 
+  const escHtml = (str: string) =>
+    String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
   const handleExportPDF = () => {
     if (!selectedList || items.length === 0) {
       error("Lỗi", "Không có dữ liệu để xuất PDF");
@@ -296,18 +317,18 @@ export function ShoppingList() {
     const itemsHtml = items.map(item => `
       <tr style="border-bottom: 1px solid #ddd;">
         <td style="padding: 8px; text-align: center;">${item.done ? '✓' : '☐'}</td>
-        <td style="padding: 8px;">${item.name}</td>
-        <td style="padding: 8px; text-align: center;">${item.quantity} ${item.unit}</td>
+        <td style="padding: 8px;">${escHtml(item.name)}</td>
+        <td style="padding: 8px; text-align: center;">${escHtml(String(item.quantity))} ${escHtml(item.unit)}</td>
         <td style="padding: 8px; text-align: right;">${item.price.toLocaleString()}₫</td>
         <td style="padding: 8px; text-align: right;">${item.actualPrice ? item.actualPrice.toLocaleString() + '₫' : '-'}</td>
-        <td style="padding: 8px;">${item.assignee || ''}</td>
+        <td style="padding: 8px;">${escHtml(item.assignee || '')}</td>
       </tr>
     `).join('');
 
     printWindow.document.write(`
       <html>
         <head>
-          <title>${selectedList.name}</title>
+          <title>${escHtml(selectedList.name)}</title>
           <style>
             body { font-family: DejaVu Sans, Arial, sans-serif; margin: 40px; color: #333; }
             h1 { text-align: center; color: #333; }
@@ -319,7 +340,7 @@ export function ShoppingList() {
         <body>
           <h1>DANH SÁCH MUA SẮM</h1>
           <div class="header-info">
-            <p><strong>Tên danh sách:</strong> ${selectedList.name}</p>
+            <p><strong>Tên danh sách:</strong> ${escHtml(selectedList.name)}</p>
             <p><strong>Ngày tạo:</strong> ${selectedList.date || new Date().toLocaleDateString('vi-VN')}</p>
             <p><strong>Trạng thái:</strong> ${selectedList.status === 'hoan_thanh' ? 'Đã hoàn thành' : 'Đang thực hiện'}</p>
           </div>
@@ -719,7 +740,7 @@ export function ShoppingList() {
       {editItem && <EditShoppingItemModal isOpen={!!editItem} onClose={() => setEditItem(null)} onSubmit={handleEditItem} item={editItem} />}
       {viewItem && <ViewShoppingItemModal isOpen={!!viewItem} onClose={() => setViewItem(null)} item={viewItem} />}
       <ShareShoppingListModal isOpen={showShare} onClose={() => setShowShare(false)} listName={selectedList?.name} />
-      <FilterModal isOpen={showFilter} onClose={() => setShowFilter(false)} onApply={() => setShowFilter(false)} />
+      <FilterModal isOpen={showFilter} onClose={() => setShowFilter(false)} onApply={(f) => { setItemFilters({ status: f.status, category: f.category, priceMin: f.priceMin, priceMax: f.priceMax }); setShowFilter(false); }} />
 
       {/* Confirm: Xóa item */}
       <ConfirmDialog

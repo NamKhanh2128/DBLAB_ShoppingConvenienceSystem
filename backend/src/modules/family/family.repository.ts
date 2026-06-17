@@ -422,4 +422,45 @@ export class FamilyRepository {
       .input('type', sql.NVarChar(50), type)
       .query(`INSERT INTO FamilyNotifications (MaNhom, NoiDung, Loai) VALUES (@groupId, @content, @type)`);
   }
+
+  // ─── MEMBER MANAGEMENT ───────────────────────────────────────────────────────
+
+  async updateMemberInfo(
+    groupId: number,
+    targetUserId: number,
+    data: { hoTen?: string; soDienThoai?: string }
+  ): Promise<void> {
+    const pool = await getPool();
+    const check = await pool.request()
+      .input('groupId', sql.Int, groupId)
+      .input('userId',  sql.Int, targetUserId)
+      .query('SELECT 1 FROM ThanhVienNhom WHERE MaNhom = @groupId AND MaNguoiDung = @userId');
+    if (!check.recordset.length) {
+      throw { statusCode: 404, message: 'Không tìm thấy thành viên trong nhóm' };
+    }
+    await pool.request()
+      .input('userId',      sql.Int,          targetUserId)
+      .input('hoTen',       sql.NVarChar(100), data.hoTen       || null)
+      .input('soDienThoai', sql.NVarChar(20),  data.soDienThoai || null)
+      .query(`
+        UPDATE NguoiDung
+        SET HoTen       = COALESCE(@hoTen,       HoTen),
+            SoDienThoai = COALESCE(@soDienThoai, SoDienThoai),
+            NgayCapNhat = GETDATE()
+        WHERE MaNguoiDung = @userId
+      `);
+  }
+
+  async setMemberRole(groupId: number, targetUserId: number, role: string): Promise<void> {
+    const pool = await getPool();
+    await pool.request()
+      .input('groupId', sql.Int,         groupId)
+      .input('userId',  sql.Int,         targetUserId)
+      .input('role',    sql.NVarChar(50), role)
+      .query(`
+        UPDATE ThanhVienNhom
+        SET VaiTro = @role, NgayCapNhat = GETUTCDATE()
+        WHERE MaNhom = @groupId AND MaNguoiDung = @userId
+      `);
+  }
 }

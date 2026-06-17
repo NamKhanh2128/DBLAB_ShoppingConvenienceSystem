@@ -1,14 +1,15 @@
 import { getPool } from '../../config/database';
 import sql from 'mssql';
 
-export class AdminRepository {
-  private cachedStats: any = null;
-  private cacheExpiry: number = 0;
+// Module-level cache — shared across all AdminRepository instances per process lifetime
+let _cachedStats: any = null;
+let _cacheExpiry: number = 0;
 
+export class AdminRepository {
   async getDashboardStats() {
     const now = Date.now();
-    if (this.cachedStats && now < this.cacheExpiry) {
-      return this.cachedStats;
+    if (_cachedStats && now < _cacheExpiry) {
+      return _cachedStats;
     }
 
     const pool = await getPool();
@@ -21,7 +22,7 @@ export class AdminRepository {
         (SELECT COUNT(*) FROM MonAn) AS totalRecipes,
         (SELECT COUNT(*) FROM DanhSachMuaSam) AS totalLists,
         (SELECT COUNT(*) FROM NguoiDung WHERE TrangThai = 'ACTIVE') AS activeUsers,
-        (SELECT COUNT(*) FROM NguoiDung WHERE TrangThai = 'BANNED') AS bannedUsers,
+        (SELECT COUNT(*) FROM NguoiDung WHERE TrangThai = 'LOCKED') AS bannedUsers,
         (SELECT COUNT(*) FROM NguoiDung WHERE TrangThai != 'DELETED' AND NgayTao >= DATEADD(day, -1, GETDATE())) AS newUsersLast24h
     `);
 
@@ -36,20 +37,24 @@ export class AdminRepository {
       newUsersLast24h: row.newUsersLast24h,
     };
 
-    this.cachedStats = stats;
-    this.cacheExpiry = now + 5 * 60 * 1000; // Cache 5 phút
+    _cachedStats = stats;
+    _cacheExpiry = now + 5 * 60 * 1000; // Cache 5 phút
     return stats;
   }
 
-  async getAllUsers() {
+  async getAllUsers(limit: number = 500, offset: number = 0) {
     const pool = await getPool();
-    const result = await pool.request().query(`
-      SELECT u.MaNguoiDung, u.HoTen, u.Email, u.VaiTro, u.TrangThai, u.NgayTao, u.NgayCapNhat,
-        (SELECT COUNT(*) FROM ThanhVienNhom WHERE MaNguoiDung = u.MaNguoiDung) AS SoNhom
-      FROM NguoiDung u 
-      WHERE u.TrangThai != 'DELETED'
-      ORDER BY u.NgayTao DESC
-    `);
+    const result = await pool.request()
+      .input('limit', sql.Int, limit)
+      .input('offset', sql.Int, offset)
+      .query(`
+        SELECT u.MaNguoiDung, u.HoTen, u.Email, u.VaiTro, u.TrangThai, u.NgayTao, u.NgayCapNhat,
+          (SELECT COUNT(*) FROM ThanhVienNhom WHERE MaNguoiDung = u.MaNguoiDung) AS SoNhom
+        FROM NguoiDung u
+        WHERE u.TrangThai != 'DELETED'
+        ORDER BY u.NgayTao DESC
+        OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY
+      `);
     return result.recordset;
   }
 
@@ -60,7 +65,7 @@ export class AdminRepository {
       .query('UPDATE NguoiDung SET TrangThai = @s, NgayCapNhat = GETDATE() WHERE MaNguoiDung = @id');
     
     // Xóa cache stats để đảm bảo hiển thị đúng sau khi đổi trạng thái
-    this.cachedStats = null;
+    _cachedStats = null;
   }
 
   async updateUserRole(id: number, role: string) {
@@ -77,7 +82,7 @@ export class AdminRepository {
       .input('id', sql.Int, id)
       .query("UPDATE NguoiDung SET TrangThai = 'DELETED', NgayCapNhat = GETDATE() WHERE MaNguoiDung = @id");
     
-    this.cachedStats = null;
+    _cachedStats = null;
   }
 
   // ── AUDIT LOGS ──────────────────────────────────────────────────
@@ -98,22 +103,38 @@ export class AdminRepository {
       `);
   }
 
-  async getAuditLogs() {
+  async getAuditLogs(limit: number = 200, offset: number = 0) {
     const pool = await getPool();
-    const result = await pool.request().query(`
-      SELECT 
-        MaLog AS id,
-        HoTenAdmin AS [user],
-        HanhDong AS action,
-        Loai AS type,
-        TrangThai AS status,
-        MoTa AS description,
-        DiaChiIP AS ip,
-        FORMAT(NgayTao, 'yyyy-MM-dd HH:mm:ss') AS timestamp
-      FROM AuditLogs
-      ORDER BY NgayTao DESC
-    `);
+    const result = await pool.request()
+      .input('limit', sql.Int, limit)
+      .input('offset', sql.Int, offset)
+      .query(`
+        SELECT
+          MaLog AS id,
+          HoTenAdmin AS [user],
+          HanhDong AS action,
+          Loai AS type,
+          TrangThai AS status,
+          MoTa AS description,
+          DiaChiIP AS ip,
+          FORMAT(NgayTao, 'yyyy-MM-dd HH:mm:ss') AS timestamp
+        FROM AuditLogs
+        ORDER BY NgayTao DESC
+        OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY
+      `);
     return result.recordset;
+  }
+
+  async resetUserPassword(id: number, hashedPassword: string): Promise<void> {
+    const pool = await getPool();
+    await pool.request()
+      .input('id', sql.Int, id)
+      .input('pw', sql.NVarChar(255), hashedPassword)
+      .query(`
+        UPDATE NguoiDung
+        SET MatKhauHash = @pw, NgayCapNhat = GETDATE(), MatKhauNgayCapNhat = GETUTCDATE()
+        WHERE MaNguoiDung = @id AND TrangThai != 'DELETED'
+      `);
   }
 
   // ── FAKE ACCOUNTS CLEANUP ───────────────────────────────────────
@@ -131,7 +152,7 @@ export class AdminRepository {
         AND MaNguoiDung NOT IN (SELECT DISTINCT NguoiPhuTrach FROM ChiTietMuaSam WHERE NguoiPhuTrach IS NOT NULL)
     `);
     
-    this.cachedStats = null;
+    _cachedStats = null;
     return result.rowsAffected[0] || 0;
   }
 }

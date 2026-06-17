@@ -231,7 +231,7 @@ export class ShoppingRepository {
         FROM KhoThucPham
         WHERE MaNhom = @g
           AND LTRIM(RTRIM(LOWER(TenTP))) = LTRIM(RTRIM(LOWER(@ten)))
-          AND TrangThai IN ('CON_HAN', 'HET')
+          AND TrangThai IN ('CON_HAN', 'HET_HAN')
         ORDER BY HanSuDung DESC
       `);
 
@@ -329,5 +329,74 @@ export class ShoppingRepository {
     }
 
     return mergedCount;
+  }
+
+  /**
+   * Nhập toàn bộ items đã mua vào kho + đổi trạng thái danh sách — tất cả trong một transaction.
+   */
+  async completeAndRestockTransaction(
+    listId: number,
+    groupId: number,
+    purchasedItems: Array<{ TenThucPham: string; SoLuong: number; DonVi: string | null }>,
+    _userId: number
+  ): Promise<{ addedCount: number; mergedCount: number }> {
+    const pool = await getPool();
+    const transaction = new sql.Transaction(pool);
+
+    try {
+      await transaction.begin();
+
+      let addedCount = 0;
+      let mergedCount = 0;
+
+      for (const item of purchasedItems) {
+        const existing = await new sql.Request(transaction)
+          .input('g',   sql.Int,      groupId)
+          .input('ten', sql.NVarChar, item.TenThucPham.trim())
+          .query(`
+            SELECT TOP 1 MaTP
+            FROM KhoThucPham WITH (UPDLOCK, ROWLOCK)
+            WHERE MaNhom = @g
+              AND LTRIM(RTRIM(LOWER(TenTP))) = LTRIM(RTRIM(LOWER(@ten)))
+              AND TrangThai IN ('CON_HAN', 'HET_HAN')
+            ORDER BY HanSuDung DESC
+          `);
+
+        if (existing.recordset.length > 0) {
+          await new sql.Request(transaction)
+            .input('maTP', sql.Int,          existing.recordset[0].MaTP)
+            .input('sl',   sql.Decimal(10,2), item.SoLuong)
+            .query(`
+              UPDATE KhoThucPham
+              SET SoLuong = SoLuong + @sl,
+                  TrangThai = 'CON_HAN',
+                  NgayNhap  = CAST(GETDATE() AS DATE)
+              WHERE MaTP = @maTP
+            `);
+          mergedCount++;
+        } else {
+          await new sql.Request(transaction)
+            .input('g',   sql.Int,          groupId)
+            .input('ten', sql.NVarChar,     item.TenThucPham.trim())
+            .input('sl',  sql.Decimal(10,2), item.SoLuong)
+            .input('dv',  sql.NVarChar,     item.DonVi || null)
+            .query(`
+              INSERT INTO KhoThucPham (MaNhom, TenTP, SoLuong, DonVi, TrangThai, NgayNhap)
+              VALUES (@g, @ten, @sl, @dv, 'CON_HAN', CAST(GETDATE() AS DATE))
+            `);
+          addedCount++;
+        }
+      }
+
+      await new sql.Request(transaction)
+        .input('id', sql.Int, listId)
+        .query("UPDATE DanhSachMuaSam SET TrangThai = 'HOAN_THANH' WHERE MaDanhSach = @id");
+
+      await transaction.commit();
+      return { addedCount, mergedCount };
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
+    }
   }
 }

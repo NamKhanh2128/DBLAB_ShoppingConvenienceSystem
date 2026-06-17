@@ -4,15 +4,13 @@ const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
 // Token helpers (Lưu trữ Access Token trong localStorage ở localhost để việc tải lại trang không bị out nick)
 let memoryToken: string | null = null;
 export const getToken = (): string | null => {
-  return memoryToken || localStorage.getItem('accessToken');
+  return memoryToken;
 };
-export const setToken = (token: string) => { 
-  memoryToken = token; 
-  localStorage.setItem('accessToken', token);
+export const setToken = (token: string) => {
+  memoryToken = token;
 };
-export const removeToken = () => { 
-  memoryToken = null; 
-  localStorage.removeItem('accessToken');
+export const removeToken = () => {
+  memoryToken = null;
 };
 
 export const getUser = () => {
@@ -24,13 +22,13 @@ export const removeUser = () => localStorage.removeItem('user');
 
 // Cơ chế xử lý làm mới song song (Concurrent Refreshing)
 let isRefreshing = false;
-let refreshSubscribers: ((token: string) => void)[] = [];
+let refreshSubscribers: ((token: string | null) => void)[] = [];
 
-const subscribeTokenRefresh = (cb: (token: string) => void) => {
+const subscribeTokenRefresh = (cb: (token: string | null) => void) => {
   refreshSubscribers.push(cb);
 };
 
-const onRefreshed = (token: string) => {
+const onRefreshed = (token: string | null) => {
   refreshSubscribers.forEach(cb => cb(token));
   refreshSubscribers = [];
 };
@@ -74,6 +72,7 @@ async function request<T>(
       if (newToken) {
         onRefreshed(newToken);
       } else {
+        onRefreshed(null);
         localStorage.removeItem('groupId');
         window.location.href = '/auth/login?expired=true';
         throw new Error('Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại.');
@@ -81,8 +80,11 @@ async function request<T>(
     }
 
     // Chờ cho đến khi tiến trình refresh đầu tiên hoàn tất
-    const retryPromise = new Promise<string>((resolve) => {
-      subscribeTokenRefresh((newToken) => resolve(newToken));
+    const retryPromise = new Promise<string>((resolve, reject) => {
+      subscribeTokenRefresh((newToken) => {
+        if (newToken) resolve(newToken);
+        else reject(new Error('Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại.'));
+      });
     });
 
     const newToken = await retryPromise;
@@ -120,6 +122,24 @@ export const authApi = {
     ),
 
   me: () => request<{ success: boolean; data: any }>('/auth/me'),
+
+  setup2FA: () =>
+    request<{ success: boolean; data: { secret: string; otpauthUrl: string } }>(
+      '/auth/2fa/setup',
+      { method: 'POST' }
+    ),
+
+  enable2FA: (code: string) =>
+    request<{ success: boolean; data: { success: boolean } }>(
+      '/auth/2fa/enable',
+      { method: 'POST', body: JSON.stringify({ code }) }
+    ),
+
+  disable2FA: () =>
+    request<{ success: boolean; data: { success: boolean } }>(
+      '/auth/2fa/disable',
+      { method: 'POST' }
+    ),
 };
 
 // ────────────────────────────────────────────────
@@ -460,4 +480,7 @@ export const adminApi = {
 
   cleanupFakeUsers: () =>
     request<{ success: boolean; data: any }>('/admin/cleanup-fake-users', { method: 'POST' }),
+
+  resetPassword: (id: number) =>
+    request<{ success: boolean; data: { tempPassword: string } }>(`/admin/users/${id}/reset-password`, { method: 'POST' }),
 };

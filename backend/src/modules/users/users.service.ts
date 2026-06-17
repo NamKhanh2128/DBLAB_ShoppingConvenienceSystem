@@ -26,7 +26,7 @@ export class UsersService {
 
   async updateProfile(id: number, dto: UpdateProfileDto) {
     // Business validation: email format check
-    if (dto.email && !dto.email.includes('@')) {
+    if (dto.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(dto.email)) {
       throw { statusCode: 400, message: 'Email không hợp lệ' };
     }
 
@@ -44,8 +44,8 @@ export class UsersService {
     const isValid = await comparePassword(dto.currentPassword, user.MatKhauHash);
     if (!isValid) throw { statusCode: 401, message: 'Mật khẩu hiện tại không đúng' };
 
-    if (dto.newPassword.length < 8) {
-      throw { statusCode: 400, message: 'Mật khẩu mới phải có ít nhất 8 ký tự' };
+    if (dto.newPassword.length < 5) {
+      throw { statusCode: 400, message: 'Mật khẩu mới phải có ít nhất 5 ký tự' };
     }
 
     const hashed = await hashPassword(dto.newPassword);
@@ -70,10 +70,9 @@ export class UsersService {
   }
 
   async getStats() {
-    const total    = await this.repo.countAll();
-    const active   = await this.repo.countByStatus('ACTIVE');
-    const banned   = await this.repo.countByStatus('BANNED');
-    const inactive = await this.repo.countByStatus('INACTIVE');
-    return { total, active, banned, inactive };
+    const total  = await this.repo.countAll();
+    const active = await this.repo.countByStatus('ACTIVE');
+    const locked = await this.repo.countByStatus('LOCKED');
+    return { total, active, locked };
   }
 }

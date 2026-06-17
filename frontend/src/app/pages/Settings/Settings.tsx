@@ -10,7 +10,7 @@ import { Badge } from "../../components/ui/badge";
 import { useToastContext } from "../../context/ToastContext";
 import { Modal, ConfirmDialog } from "../../components/common";
 import { useAuth } from "../../context/AuthContext";
-import { usersApi, familyApi } from "../../services/api";
+import { usersApi, familyApi, authApi } from "../../services/api";
 import { useLanguage } from "../../context/LanguageContext";
 
 export function Settings() {
@@ -96,6 +96,13 @@ export function Settings() {
   const [showPass, setShowPass] = useState({ current: false, new: false, confirm: false });
   const [savingPassword, setSavingPassword] = useState(false);
 
+  // 2FA state
+  const [show2FAModal, setShow2FAModal] = useState(false);
+  const [twoFactorData, setTwoFactorData] = useState<{ secret: string; otpauthUrl: string } | null>(null);
+  const [twoFactorCode, setTwoFactorCode] = useState("");
+  const [saving2FA, setSaving2FA] = useState(false);
+  const is2FAEnabled = !!(user?.IsTwoFactorEnabled);
+
   // ─── HANDLER: Lưu hồ sơ → gọi API thật ───
   const handleSaveProfile = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -135,8 +142,8 @@ export function Settings() {
       error("Vui lòng nhập mật khẩu hiện tại", "Mật khẩu hiện tại không được để trống.");
       return;
     }
-    if (passwords.new.length < 8) {
-      error("Mật khẩu quá ngắn", "Mật khẩu mới phải có ít nhất 8 ký tự.");
+    if (passwords.new.length < 5) {
+      error("Mật khẩu quá ngắn", "Mật khẩu mới phải có ít nhất 5 ký tự.");
       return;
     }
     if (passwords.new !== passwords.confirm) {
@@ -198,6 +205,56 @@ export function Settings() {
       error("Lỗi xóa tài khoản", e.message || "Không thể xóa tài khoản.");
     } finally {
       setShowDeleteConfirm(false);
+    }
+  };
+
+  // ─── HANDLER: Cấu hình 2FA ───
+  const handleOpen2FA = async () => {
+    if (is2FAEnabled) {
+      // Tắt 2FA không cần OTP
+      setSaving2FA(true);
+      try {
+        await authApi.disable2FA();
+        if (setUser && user) setUser({ ...user, IsTwoFactorEnabled: 0 });
+        success("🔓 Đã tắt 2FA", "Xác thực 2 bước đã được vô hiệu hóa.");
+      } catch (e: any) {
+        error("Lỗi", e.message || "Không thể tắt 2FA.");
+      } finally {
+        setSaving2FA(false);
+      }
+      return;
+    }
+    // Gọi setup để lấy secret
+    setSaving2FA(true);
+    try {
+      const res = await authApi.setup2FA();
+      setTwoFactorData(res.data);
+      setTwoFactorCode("");
+      setShow2FAModal(true);
+    } catch (e: any) {
+      error("Lỗi", e.message || "Không thể khởi tạo 2FA.");
+    } finally {
+      setSaving2FA(false);
+    }
+  };
+
+  const handleEnable2FA = async () => {
+    if (!twoFactorCode || twoFactorCode.length < 6) {
+      error("Lỗi", "Vui lòng nhập mã OTP 6 chữ số từ ứng dụng xác thực.");
+      return;
+    }
+    setSaving2FA(true);
+    try {
+      await authApi.enable2FA(twoFactorCode);
+      if (setUser && user) setUser({ ...user, IsTwoFactorEnabled: 1 });
+      success("🔐 Bật 2FA thành công!", "Tài khoản của bạn đã được bảo vệ bởi xác thực 2 bước.");
+      setShow2FAModal(false);
+      setTwoFactorData(null);
+      setTwoFactorCode("");
+    } catch (e: any) {
+      error("Mã OTP không đúng", e.message || "Vui lòng kiểm tra lại mã trong ứng dụng xác thực.");
+    } finally {
+      setSaving2FA(false);
     }
   };
 
@@ -444,19 +501,23 @@ export function Settings() {
           </button>
 
           <button
-            className="w-full flex items-center justify-between p-4 rounded-[var(--radius-sm)] border border-[var(--border-light)] hover:border-[var(--info)] hover:bg-[var(--card-bg)] transition-smooth group"
-            onClick={() => success("🔐 Tính năng đang cập nhật", "Xác thực 2 bước sẽ sớm ra mắt!")}
+            className="w-full flex items-center justify-between p-4 rounded-[var(--radius-sm)] border border-[var(--border-light)] hover:border-[var(--info)] hover:bg-[var(--card-bg)] transition-smooth group disabled:opacity-50"
+            onClick={handleOpen2FA}
+            disabled={saving2FA}
           >
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 bg-[var(--card-bg)] rounded-lg flex items-center justify-center">
-                <Shield className="w-4 h-4 text-[var(--text-muted)]" />
+              <div className="w-9 h-9 bg-[var(--card-bg)] rounded-lg flex items-center justify-center group-hover:bg-[var(--info)]/10 transition-smooth">
+                <Shield className="w-4 h-4 text-[var(--text-muted)] group-hover:text-[var(--info)]" />
               </div>
               <div className="text-left">
                 <p className="font-semibold text-[var(--text-dark)]">Xác thực 2 bước</p>
-                <p className="text-xs text-[var(--text-muted)]">Tăng cường bảo mật tài khoản</p>
+                <p className="text-xs text-[var(--text-muted)]">{is2FAEnabled ? "Đang bật — nhấn để tắt" : "Tăng cường bảo mật tài khoản"}</p>
               </div>
             </div>
-            <Badge className="bg-[var(--warning-light)] text-[var(--warning)] border-none font-semibold">Sắp ra mắt</Badge>
+            {is2FAEnabled
+              ? <Badge className="bg-[var(--success-light)] text-[var(--success)] border-none font-semibold">Đang bật</Badge>
+              : <Badge className="bg-[var(--card-bg)] text-[var(--text-muted)] border-none font-semibold">Tắt</Badge>
+            }
           </button>
         </CardContent>
       </Card>
@@ -566,8 +627,8 @@ export function Settings() {
               </div>
             </div>
           ))}
-          {passwords.new && passwords.new.length < 8 && (
-            <p className="text-xs text-[var(--danger)]">⚠️ Mật khẩu phải có ít nhất 8 ký tự</p>
+          {passwords.new && passwords.new.length < 5 && (
+            <p className="text-xs text-[var(--danger)]">⚠️ Mật khẩu phải có ít nhất 5 ký tự</p>
           )}
           {passwords.confirm && passwords.new !== passwords.confirm && (
             <p className="text-xs text-[var(--danger)]">⚠️ Mật khẩu không khớp</p>
@@ -585,6 +646,62 @@ export function Settings() {
         cancelText="Hủy"
         type="danger"
       />
+
+      {/* 2FA Setup Modal */}
+      <Modal
+        isOpen={show2FAModal}
+        onClose={() => { setShow2FAModal(false); setTwoFactorData(null); setTwoFactorCode(""); }}
+        title="Cài đặt xác thực 2 bước (TOTP)"
+        size="sm"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => { setShow2FAModal(false); setTwoFactorData(null); setTwoFactorCode(""); }} className="rounded-[var(--radius-btn)] font-semibold" disabled={saving2FA}>
+              Hủy
+            </Button>
+            <Button
+              onClick={handleEnable2FA}
+              className="bg-gradient-purple text-white rounded-[var(--radius-btn)] shadow-[var(--shadow-btn)] font-semibold hover-lift"
+              disabled={saving2FA || twoFactorCode.length < 6}
+            >
+              {saving2FA ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Đang xác minh...</> : "Bật 2FA"}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-[var(--text-muted)]">
+            Mở ứng dụng xác thực (Google Authenticator, Authy…) và thêm tài khoản bằng cách nhập thủ công khóa bí mật bên dưới.
+          </p>
+          {twoFactorData && (
+            <div className="bg-[var(--card-bg)] rounded-[var(--radius-sm)] p-3 border border-[var(--border-light)]">
+              <p className="text-xs text-[var(--text-muted)] mb-1 font-semibold">Khóa bí mật (Manual Key)</p>
+              <div className="flex items-center gap-2">
+                <code className="text-sm font-mono text-[var(--purple-deep)] break-all flex-1">{twoFactorData.secret}</code>
+                <button
+                  type="button"
+                  className="text-[var(--text-muted)] hover:text-[var(--purple-deep)] transition-smooth flex-shrink-0"
+                  onClick={() => { navigator.clipboard.writeText(twoFactorData.secret); info("📋 Đã sao chép", "Khóa bí mật đã được sao chép."); }}
+                >
+                  <Copy className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+          <div className="space-y-2">
+            <Label className="font-semibold">Mã OTP 6 chữ số</Label>
+            <Input
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              value={twoFactorCode}
+              onChange={e => setTwoFactorCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="000000"
+              className="rounded-[var(--radius-sm)] border-[var(--border-light)] text-center text-2xl font-mono tracking-widest focus-visible:ring-[var(--purple-deep)]"
+              disabled={saving2FA}
+            />
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

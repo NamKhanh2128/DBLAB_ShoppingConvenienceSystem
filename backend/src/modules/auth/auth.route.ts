@@ -28,11 +28,10 @@ const createRateLimiter = (windowMs: number, max: number, message: string) => {
 };
 
 const loginLimiter = createRateLimiter(15 * 60 * 1000, 5, 'Tài khoản của bạn đã thử đăng nhập sai quá 5 lần. Vui lòng quay lại sau 15 phút.');
-const registerLimiter = createRateLimiter(60 * 60 * 1000, 3, 'Bạn đã đăng ký quá nhiều tài khoản trong thời gian ngắn. Vui lòng quay lại sau 1 giờ.');
 
 // Public routes
 router.post('/login', loginLimiter, validateRequest(loginSchema), authController.login.bind(authController));
-router.post('/register', registerLimiter, validateRequest(registerSchema), authController.register.bind(authController));
+router.post('/register', validateRequest(registerSchema), authController.register.bind(authController));
 router.post('/refresh', authController.refresh.bind(authController));
 router.post('/logout', authController.logout.bind(authController));
 

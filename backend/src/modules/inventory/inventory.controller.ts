@@ -7,24 +7,20 @@ const svc = new InventoryService();
 export class InventoryController {
   
   async getAll(req: any, res: Response, next: NextFunction) {
-    try { 
-      let groupId = Number(req.query.groupId);
-      if ((!groupId || isNaN(groupId)) && (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV)) {
-        groupId = 1;
-      }
+    try {
+      const groupId = Number(req.query.groupId);
+      if (!groupId || isNaN(groupId)) throw { statusCode: 400, message: 'Thiếu tham số groupId' };
       const data = await svc.getInventory(groupId, req.user.id);
-      return createSuccess(res, data); 
+      return createSuccess(res, data);
     } catch (e) { next(e); }
   }
 
   async getExpiring(req: any, res: Response, next: NextFunction) {
-    try { 
-      let groupId = Number(req.query.groupId);
-      if ((!groupId || isNaN(groupId)) && (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV)) {
-        groupId = 1;
-      }
+    try {
+      const groupId = Number(req.query.groupId);
+      if (!groupId || isNaN(groupId)) throw { statusCode: 400, message: 'Thiếu tham số groupId' };
       const data = await svc.getExpiring(groupId, req.user.id);
-      return createSuccess(res, data); 
+      return createSuccess(res, data);
     } catch (e) { next(e); }
   }
 
@@ -53,10 +49,8 @@ export class InventoryController {
 
   async getLogs(req: any, res: Response, next: NextFunction) {
     try {
-      let groupId = Number(req.params.groupId);
-      if ((!groupId || isNaN(groupId)) && (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV)) {
-        groupId = 1;
-      }
+      const groupId = Number(req.query.groupId);
+      if (!groupId || isNaN(groupId)) throw { statusCode: 400, message: 'Thiếu tham số groupId' };
       const data = await svc.getAuditLogs(groupId, req.user.id);
       return createSuccess(res, data);
     } catch (e) { next(e); }

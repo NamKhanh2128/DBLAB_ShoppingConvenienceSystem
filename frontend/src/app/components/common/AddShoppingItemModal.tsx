@@ -4,13 +4,14 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { Package, Tag, Hash, ShoppingCart } from "lucide-react";
+import { Package, Tag, Hash, ShoppingCart, DollarSign } from "lucide-react";
 
 interface ShoppingItemData {
   id?: string;
   name: string;
   quantity: string;
   unit: string;
+  price: string;
   category: string;
   note: string;
   assignedTo?: string;
@@ -35,6 +36,7 @@ export function AddShoppingItemModal({
     name: "",
     quantity: "",
     unit: "kg",
+    price: "",
     category: "Rau củ",
     note: "",
   });
@@ -47,6 +49,7 @@ export function AddShoppingItemModal({
         name: "",
         quantity: "",
         unit: "kg",
+        price: "",
         category: "Rau củ",
         note: "",
       });
@@ -139,6 +142,23 @@ export function AddShoppingItemModal({
               </SelectContent>
             </Select>
           </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="price" className="text-[var(--text-dark)] font-semibold flex items-center gap-2">
+            <DollarSign className="w-4 h-4 text-[var(--purple-deep)]" strokeWidth={2.5} />
+            Giá dự kiến (₫)
+          </Label>
+          <Input
+            id="price"
+            type="number"
+            min="0"
+            step="1000"
+            value={formData.price}
+            onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+            placeholder="0"
+            className="h-11 rounded-[var(--radius-sm)] border-[var(--border-light)] focus-visible:border-[var(--purple-deep)] focus-visible:ring-[var(--purple-deep)]"
+          />
         </div>
 
         <div className="space-y-2">

@@ -1,12 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { env } from '../../config/env';
 
-export const generateToken = (payload: any): string => {
-  return jwt.sign(payload, env.JWT_SECRET, {
-    expiresIn: env.JWT_EXPIRES_IN as any,
-  });
-};
-
 export const generateAccessToken = (payload: any): string => {
   return jwt.sign(payload, env.JWT_SECRET, {
     expiresIn: '15m', // Access Token hết hạn sau 15 phút

@@ -211,54 +211,58 @@ export class RecipesRepository {
     multiplier: number
   ): Promise<{ deducted: number; notFound: string[] }> {
     const pool = await getPool();
+    const transaction = new sql.Transaction(pool);
 
-    // Lấy nguyên liệu của công thức từ NguyenLieuMon JOIN KhoThucPham
-    const nlResult = await pool
-      .request()
-      .input('monId', sql.Int, monId)
-      .input('groupId', sql.Int, groupId)
-      .query(`
-        SELECT nl.SoLuongCan, k.TenTP, k.MaTP, k.SoLuong
-        FROM NguyenLieuMon nl
-        JOIN KhoThucPham k ON nl.MaTP = k.MaTP
-        WHERE nl.MaMon = @monId AND k.MaNhom = @groupId
-      `);
+    try {
+      await transaction.begin();
 
-    const ingredients = nlResult.recordset;
-    let deducted = 0;
-    const notFound: string[] = [];
+      // Đọc nguyên liệu với UPDLOCK để chặn race condition đồng thời
+      const nlResult = await new sql.Request(transaction)
+        .input('monId', sql.Int, monId)
+        .input('groupId', sql.Int, groupId)
+        .query(`
+          SELECT nl.SoLuongCan, k.TenTP, k.MaTP, k.SoLuong
+          FROM NguyenLieuMon nl
+          JOIN KhoThucPham k WITH (UPDLOCK, ROWLOCK) ON nl.MaTP = k.MaTP
+          WHERE nl.MaMon = @monId AND k.MaNhom = @groupId
+        `);
 
-    for (const ing of ingredients) {
-      const needed = ing.SoLuongCan * multiplier;
-      if (ing.SoLuong >= needed) {
-        // Trừ số lượng trong kho
-        await pool
-          .request()
-          .input('maTP', sql.Int, ing.MaTP)
-          .input('soLuong', sql.Decimal(10, 2), needed)
-          .query(`
-            UPDATE KhoThucPham
-            SET SoLuong = SoLuong - @soLuong,
-                TrangThai = CASE WHEN SoLuong - @soLuong <= 0 THEN 'HET' ELSE TrangThai END
-            WHERE MaTP = @maTP
-          `);
-        deducted++;
-      } else {
-        // Trừ hết những gì còn lại (partial deduction)
-        if (ing.SoLuong > 0) {
-          await pool
-            .request()
+      const ingredients = nlResult.recordset;
+      let deducted = 0;
+      const notFound: string[] = [];
+
+      for (const ing of ingredients) {
+        const needed = ing.SoLuongCan * multiplier;
+        if (ing.SoLuong >= needed) {
+          await new sql.Request(transaction)
             .input('maTP', sql.Int, ing.MaTP)
+            .input('soLuong', sql.Decimal(10, 2), needed)
             .query(`
               UPDATE KhoThucPham
-              SET SoLuong = 0, TrangThai = 'HET'
+              SET SoLuong = SoLuong - @soLuong,
+                  TrangThai = CASE WHEN SoLuong - @soLuong <= 0 THEN 'HET_HAN' ELSE TrangThai END
               WHERE MaTP = @maTP
             `);
+          deducted++;
+        } else {
+          if (ing.SoLuong > 0) {
+            await new sql.Request(transaction)
+              .input('maTP', sql.Int, ing.MaTP)
+              .query(`
+                UPDATE KhoThucPham
+                SET SoLuong = 0, TrangThai = 'HET_HAN'
+                WHERE MaTP = @maTP
+              `);
+          }
+          notFound.push(ing.TenTP);
         }
-        notFound.push(ing.TenTP);
       }
-    }
 
-    return { deducted, notFound };
+      await transaction.commit();
+      return { deducted, notFound };
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
+    }
   }
 }

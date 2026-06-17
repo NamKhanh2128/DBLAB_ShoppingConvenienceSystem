@@ -150,24 +150,12 @@ export class ShoppingService {
       };
     }
 
-    let addedCount = 0;
-    let mergedCount = 0;
-
-    // Nhập từng item vào kho
-    for (const item of purchasedItems) {
-      const result = await this.repo.upsertInventoryItem(
-        list.MaNhom,
-        item.TenThucPham,
-        item.SoLuong,
-        item.DonVi,
-        userId
-      );
-      if (result === 'added') addedCount++;
-      else mergedCount++;
-    }
-
-    // Đánh dấu danh sách là Hoàn thành
-    await this.repo.updateListStatus(listId, 'HOAN_THANH');
+    const { addedCount, mergedCount } = await this.repo.completeAndRestockTransaction(
+      listId,
+      list.MaNhom,
+      purchasedItems,
+      userId
+    );
 
     return {
       total: purchasedItems.length,

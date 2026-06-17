@@ -227,4 +227,44 @@ export class FamilyService {
 
     return this.repo.getNotificationsByGroup(groupId);
   }
+
+  // ── UPDATE MEMBER INFO ────────────────────────────────────────────────────
+  async updateMember(
+    groupId: number,
+    targetUserId: number,
+    data: { hoTen?: string; soDienThoai?: string },
+    requesterId: number
+  ) {
+    const group = await this.repo.getGroupById(groupId);
+    if (!group) throw { statusCode: 404, message: 'Nhóm gia đình không tồn tại' };
+    if (group.TruongNhom !== requesterId) {
+      throw { statusCode: 403, message: 'Chỉ Trưởng nhóm mới có quyền sửa thông tin thành viên' };
+    }
+    await this.repo.updateMemberInfo(groupId, targetUserId, data);
+    return this.repo.getMembers(groupId);
+  }
+
+  // ── UPDATE MEMBER ROLE ────────────────────────────────────────────────────
+  async setMemberRole(
+    groupId: number,
+    targetUserId: number,
+    role: string,
+    requesterId: number
+  ) {
+    const VALID_ROLES = ['MEMBER', 'VIEWER'];
+    if (!VALID_ROLES.includes(role)) {
+      throw { statusCode: 400, message: 'Vai trò không hợp lệ. Chỉ chấp nhận: MEMBER, VIEWER (dùng chuyển nhượng để đổi LEADER)' };
+    }
+    const group = await this.repo.getGroupById(groupId);
+    if (!group) throw { statusCode: 404, message: 'Nhóm gia đình không tồn tại' };
+    if (group.TruongNhom !== requesterId) {
+      throw { statusCode: 403, message: 'Chỉ Trưởng nhóm mới có quyền thay đổi vai trò thành viên' };
+    }
+    if (targetUserId === requesterId) {
+      throw { statusCode: 400, message: 'Bạn không thể tự thay đổi vai trò của mình' };
+    }
+    await this.repo.setMemberRole(groupId, targetUserId, role);
+    await this.repo.logActivity(groupId, `Vai trò thành viên ID ${targetUserId} đã được cập nhật thành ${role}.`, 'INFO_UPDATE');
+    return this.repo.getMembers(groupId);
+  }
 }

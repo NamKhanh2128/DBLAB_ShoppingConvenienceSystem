@@ -38,27 +38,27 @@ export class ReportsRepository {
       SELECT 
         CAST(ISNULL(SUM(CASE WHEN ct.DaMua = 1 THEN CAST(ct.GiaThucTe * ct.SoLuong AS DECIMAL(12,2)) ELSE 0 END), 0) AS DECIMAL(12,2)) AS TongChiPhi,
         CAST(ISNULL((
-          SELECT SUM(kp.SoLuong * ISNULL(
-            (SELECT TOP 1 sub.GiaThucTe 
-             FROM ChiTietMuaSam sub 
-             INNER JOIN DanhSachMuaSam subDs ON sub.MaDanhSach = subDs.MaDanhSach 
-             WHERE subDs.MaNhom = @g AND sub.TenThucPham = kp.TenTP AND sub.DaMua = 1 
-             ORDER BY subDs.NgayTao DESC), 
-            15000
-          ))
+          SELECT SUM(kp.SoLuong * ISNULL(lastPrice.GiaThucTe, 15000))
           FROM KhoThucPham kp
+          OUTER APPLY (
+            SELECT TOP 1 sub.GiaThucTe
+            FROM ChiTietMuaSam sub
+            INNER JOIN DanhSachMuaSam subDs ON sub.MaDanhSach = subDs.MaDanhSach
+            WHERE subDs.MaNhom = @g AND sub.TenThucPham = kp.TenTP AND sub.DaMua = 1
+            ORDER BY subDs.NgayTao DESC
+          ) AS lastPrice
           WHERE kp.MaNhom = @g AND kp.TrangThai = 'HET_HAN'
         ), 0) AS DECIMAL(12,2)) AS TongLangPhi,
         CAST(ISNULL((
-          SELECT SUM((nk.SoLuongTruoc - nk.SoLuongSau) * ISNULL(
-            (SELECT TOP 1 sub.GiaThucTe 
-             FROM ChiTietMuaSam sub 
-             INNER JOIN DanhSachMuaSam subDs ON sub.MaDanhSach = subDs.MaDanhSach 
-             WHERE subDs.MaNhom = @g AND sub.TenThucPham = nk.TenTP AND sub.DaMua = 1 
-             ORDER BY subDs.NgayTao DESC), 
-            15000
-          ))
+          SELECT SUM((nk.SoLuongTruoc - nk.SoLuongSau) * ISNULL(lastPrice2.GiaThucTe, 15000))
           FROM NhatKyKho nk
+          OUTER APPLY (
+            SELECT TOP 1 sub.GiaThucTe
+            FROM ChiTietMuaSam sub
+            INNER JOIN DanhSachMuaSam subDs ON sub.MaDanhSach = subDs.MaDanhSach
+            WHERE subDs.MaNhom = @g AND sub.TenThucPham = nk.TenTP AND sub.DaMua = 1
+            ORDER BY subDs.NgayTao DESC
+          ) AS lastPrice2
           WHERE nk.MaNhom = @g AND nk.HanhDong = 'TIEU_THU'
             ${dateFilter.replace(/ds\.NgayTao/g, 'nk.NgayThucHien')}
         ), 0) AS DECIMAL(12,2)) AS TongTietKiem,

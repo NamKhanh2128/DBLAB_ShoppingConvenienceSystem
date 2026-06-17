@@ -9,7 +9,15 @@ interface ViewInventoryDetailsModalProps {
   item?: any;
   onEdit?: (item: any) => void;
   onUse?: (item: any) => void;
+  itemLogs?: any[];
 }
+
+const ACTION_LABELS: Record<string, string> = {
+  THEM_MOI: "Thêm vào kho",
+  CAP_NHAT: "Cập nhật",
+  TIEU_THU: "Sử dụng / Nấu ăn",
+  XOA: "Xóa khỏi kho",
+};
 
 export function ViewInventoryDetailsModal({
   isOpen,
@@ -17,6 +25,7 @@ export function ViewInventoryDetailsModal({
   item,
   onEdit,
   onUse,
+  itemLogs,
 }: ViewInventoryDetailsModalProps) {
   if (!item) return null;
 
@@ -91,18 +100,25 @@ export function ViewInventoryDetailsModal({
         {/* Storage History */}
         <div className="pt-2 border-t border-[var(--border-light)]">
           <h3 className="font-bold text-sm text-[var(--text-dark)] mb-3">Lịch sử lưu trữ</h3>
-          <div className="space-y-2">
-            <div className="flex items-center gap-3 text-sm">
-              <div className="w-2 h-2 rounded-full bg-[var(--gold)]" />
-              <span className="text-[var(--text-muted)]">14/04/2026</span>
-              <span className="text-[var(--text-dark)]">Thêm vào kho</span>
+          {itemLogs && itemLogs.length > 0 ? (
+            <div className="space-y-2 max-h-40 overflow-y-auto">
+              {itemLogs.map((log: any, idx: number) => (
+                <div key={idx} className="flex items-start gap-3 text-sm">
+                  <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${idx === 0 ? "bg-[var(--gold)]" : "bg-gray-300"}`} />
+                  <span className="text-[var(--text-muted)] whitespace-nowrap">
+                    {log.NgayThucHien ? new Date(log.NgayThucHien).toLocaleDateString("vi-VN") : "—"}
+                  </span>
+                  <span className="text-[var(--text-dark)]">
+                    {ACTION_LABELS[log.HanhDong] || log.HanhDong}
+                    {log.SoLuongTruoc != null && log.SoLuongSau != null &&
+                      ` (${log.SoLuongTruoc} → ${log.SoLuongSau} ${log.DonVi || ""})`}
+                  </span>
+                </div>
+              ))}
             </div>
-            <div className="flex items-center gap-3 text-sm">
-              <div className="w-2 h-2 rounded-full bg-gray-300" />
-              <span className="text-[var(--text-muted)]">15/04/2026</span>
-              <span className="text-[var(--text-dark)]">Chuyển vị trí</span>
-            </div>
-          </div>
+          ) : (
+            <p className="text-xs text-[var(--text-muted)] italic">Chưa có lịch sử lưu trữ</p>
+          )}
         </div>
 
         {/* Actions */}

@@ -136,16 +136,23 @@ export class MealPlanRepository {
       .query(`
         -- Nhân bản và tính toán bù ngày chính xác
         INSERT INTO KeHoachBuaAn (MaNhom, Ngay, Buoi, MaMon, GhiChu, SoKhauPhan, TenMonAn)
-        SELECT 
-          MaNhom, 
-          DATEADD(day, DATEDIFF(day, @fromS, Ngay), @toS) AS NewNgay, 
-          Buoi, 
-          MaMon, 
-          GhiChu, 
-          SoKhauPhan, 
-          TenMonAn
-        FROM KeHoachBuaAn
-        WHERE MaNhom = @g AND Ngay BETWEEN @fromS AND @fromE
+        SELECT
+          src.MaNhom,
+          DATEADD(day, DATEDIFF(day, @fromS, src.Ngay), @toS) AS NewNgay,
+          src.Buoi,
+          src.MaMon,
+          src.GhiChu,
+          src.SoKhauPhan,
+          src.TenMonAn
+        FROM KeHoachBuaAn src
+        WHERE src.MaNhom = @g AND src.Ngay BETWEEN @fromS AND @fromE
+          AND NOT EXISTS (
+            SELECT 1 FROM KeHoachBuaAn dst
+            WHERE dst.MaNhom = src.MaNhom
+              AND dst.Ngay = DATEADD(day, DATEDIFF(day, @fromS, src.Ngay), @toS)
+              AND dst.Buoi = src.Buoi
+              AND dst.MaMon = src.MaMon
+          )
       `);
   }
 }

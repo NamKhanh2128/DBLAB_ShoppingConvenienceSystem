@@ -1,4 +1,4 @@
-﻿USE shoppingdb;
+USE shoppingdb;
 GO
 
 -- ========================================================
@@ -21,13 +21,14 @@ GO
 -- - Luôn đảm bảo tồn tại 2 tài khoản ADMIN cố định
 -- - Mật khẩu cho 2 admin: 123456
 -- ========================================================
+SET IDENTITY_INSERT NguoiDung ON;
 MERGE INTO NguoiDung AS target
 USING (
   VALUES
-    (1, N'Admin 1', 'admin1@test.com', '$2a$10$wO3mY8lC9JcKkI5kS.bQ8.tW5sFwP.W1p3jJ6xMvO5VnU9rA9k3S2', 'ADMIN', 'ACTIVE'),
-    (2, N'Admin 2', 'admin2@test.com', '$2a$10$wO3mY8lC9JcKkI5kS.bQ8.tW5sFwP.W1p3jJ6xMvO5VnU9rA9k3S2', 'ADMIN', 'ACTIVE'),
-    (3, N'Nguyễn Khánh', 'khanh@example.com', '$2a$10$wO3mY8lC9JcKkI5kS.bQ8.tW5sFwP.W1p3jJ6xMvO5VnU9rA9k3S2', 'MEMBER', 'ACTIVE'),
-    (4, N'Lê Thảo', 'thao@example.com', '$2a$10$wO3mY8lC9JcKkI5kS.bQ8.tW5sFwP.W1p3jJ6xMvO5VnU9rA9k3S2', 'MEMBER', 'ACTIVE')
+    (1, N'Admin 1', 'admin1@test.com', '$2b$10$mdUBG9zFDFS1oEYYbgS3GOT4PufSGzKvWhxaBfxUo/bWbbxkz9Fx6', 'ADMIN', 'ACTIVE'),
+    (2, N'Admin 2', 'admin2@test.com', '$2b$10$mdUBG9zFDFS1oEYYbgS3GOT4PufSGzKvWhxaBfxUo/bWbbxkz9Fx6', 'ADMIN', 'ACTIVE'),
+    (3, N'Nguyễn Khánh', 'khanh@example.com', '$2b$10$mdUBG9zFDFS1oEYYbgS3GOT4PufSGzKvWhxaBfxUo/bWbbxkz9Fx6', 'MEMBER', 'ACTIVE'),
+    (4, N'Lê Thảo', 'thao@example.com', '$2b$10$mdUBG9zFDFS1oEYYbgS3GOT4PufSGzKvWhxaBfxUo/bWbbxkz9Fx6', 'MEMBER', 'ACTIVE')
 ) AS source (MaNguoiDung, HoTen, Email, MatKhauHash, VaiTro, TrangThai)
 ON target.MaNguoiDung = source.MaNguoiDung
 WHEN MATCHED THEN
@@ -40,6 +41,7 @@ WHEN MATCHED THEN
 WHEN NOT MATCHED BY TARGET THEN
   INSERT (MaNguoiDung, HoTen, Email, MatKhauHash, VaiTro, TrangThai)
   VALUES (source.MaNguoiDung, source.HoTen, source.Email, source.MatKhauHash, source.VaiTro, source.TrangThai);
+SET IDENTITY_INSERT NguoiDung OFF;
 GO
 
 -- ========================================================

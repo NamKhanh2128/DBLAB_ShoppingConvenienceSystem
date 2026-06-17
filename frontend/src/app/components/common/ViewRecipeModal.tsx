@@ -1,8 +1,10 @@
+import { useState } from "react";
 import { X, Clock, Users, ChefHat, Star, Heart, Share2, Printer } from "lucide-react";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { Separator } from "../ui/separator";
 import Modal from "./Modal";
+import { toast } from "./Toast";
 
 interface ViewRecipeModalProps {
   isOpen: boolean;
@@ -17,7 +19,25 @@ export function ViewRecipeModal({
   recipe,
   onAddToMealPlan,
 }: ViewRecipeModalProps) {
+  const [isFavorited, setIsFavorited] = useState(false);
+
   if (!recipe) return null;
+
+  const handleShare = async () => {
+    const shareText = `${recipe.name || "Công thức nấu ăn"} — Thời gian: ${recipe.cookingTime ?? recipe.time ?? "?"} phút, ${recipe.servings || 4} người`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: recipe.name, text: shareText });
+      } catch {
+        /* user cancelled */
+      }
+    } else {
+      await navigator.clipboard.writeText(shareText);
+      toast.success("Đã sao chép thông tin công thức!");
+    }
+  };
+
+  const handlePrint = () => window.print();
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Chi tiết công thức" size="lg">
@@ -146,13 +166,18 @@ export function ViewRecipeModal({
         <div className="grid grid-cols-3 gap-3 pt-4 border-t border-[var(--border-light)]">
           <Button
             variant="outline"
-            className="rounded-[var(--radius-btn)] border-[var(--border-light)] hover:bg-[var(--card-bg)] font-semibold"
+            onClick={() => {
+              setIsFavorited(f => !f);
+              toast.success(isFavorited ? "Đã bỏ yêu thích" : "Đã thêm vào yêu thích!");
+            }}
+            className={`rounded-[var(--radius-btn)] border-[var(--border-light)] font-semibold ${isFavorited ? "text-red-500 border-red-200" : "hover:bg-[var(--card-bg)]"}`}
           >
-            <Heart className="w-4 h-4 mr-2" />
+            <Heart className={`w-4 h-4 mr-2 ${isFavorited ? "fill-red-500" : ""}`} />
             Yêu thích
           </Button>
           <Button
             variant="outline"
+            onClick={handleShare}
             className="rounded-[var(--radius-btn)] border-[var(--border-light)] hover:bg-[var(--card-bg)] font-semibold"
           >
             <Share2 className="w-4 h-4 mr-2" />
@@ -160,6 +185,7 @@ export function ViewRecipeModal({
           </Button>
           <Button
             variant="outline"
+            onClick={handlePrint}
             className="rounded-[var(--radius-btn)] border-[var(--border-light)] hover:bg-[var(--card-bg)] font-semibold"
           >
             <Printer className="w-4 h-4 mr-2" />

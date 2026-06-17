@@ -68,6 +68,14 @@ export class AdminController {
     } catch (e) { next(e); }
   }
 
+  async resetPassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      const actor = await this.getActor(req);
+      const tempPassword = await svc.resetUserPassword(Number(req.params.id), actor);
+      return createSuccess(res, { tempPassword }, 'Reset mật khẩu thành công');
+    } catch (e) { next(e); }
+  }
+
   async cleanupFakeUsers(req: Request, res: Response, next: NextFunction) {
     try {
       const actor = await this.getActor(req);

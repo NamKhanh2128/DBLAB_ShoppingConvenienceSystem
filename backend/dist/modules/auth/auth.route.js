@@ -25,10 +25,9 @@ const createRateLimiter = (windowMs, max, message) => {
     };
 };
 const loginLimiter = createRateLimiter(15 * 60 * 1000, 5, 'Tài khoản của bạn đã thử đăng nhập sai quá 5 lần. Vui lòng quay lại sau 15 phút.');
-const registerLimiter = createRateLimiter(60 * 60 * 1000, 3, 'Bạn đã đăng ký quá nhiều tài khoản trong thời gian ngắn. Vui lòng quay lại sau 1 giờ.');
 // Public routes
 router.post('/login', loginLimiter, (0, validate_middleware_1.validateRequest)(auth_validation_1.loginSchema), authController.login.bind(authController));
-router.post('/register', registerLimiter, (0, validate_middleware_1.validateRequest)(auth_validation_1.registerSchema), authController.register.bind(authController));
+router.post('/register', (0, validate_middleware_1.validateRequest)(auth_validation_1.registerSchema), authController.register.bind(authController));
 router.post('/refresh', authController.refresh.bind(authController));
 router.post('/logout', authController.logout.bind(authController));
 // Protected routes

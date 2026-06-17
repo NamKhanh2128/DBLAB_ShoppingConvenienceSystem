@@ -130,9 +130,10 @@ export class RecipesService {
     await this.checkGroupMembership(validated.maNhom, userId);
 
     // Tính hệ số nhân từ số khẩu phần
-    // Ví dụ: công thức gốc 4 người, nấu 8 người → multiplier = 2.0
-    const defaultServings = recipe.KhauPhan || 1;
-    const multiplier = validated.soKhauPhan / defaultServings;
+    if (!recipe.KhauPhan) {
+      throw { statusCode: 400, message: 'Công thức này chưa có thông tin khẩu phần (KhauPhan). Vui lòng cập nhật công thức trước khi nấu.' };
+    }
+    const multiplier = validated.soKhauPhan / recipe.KhauPhan;
 
     // Trừ nguyên liệu trong kho
     const result = await this.repo.deductInventoryForCooking(

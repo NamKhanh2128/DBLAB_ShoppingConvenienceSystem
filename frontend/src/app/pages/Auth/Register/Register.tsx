@@ -30,8 +30,8 @@ export function Register() {
       error("Mật khẩu không khớp", "Vui lòng kiểm tra lại mật khẩu xác nhận");
       return;
     }
-    if (password.length < 8) {
-      error("Mật khẩu quá ngắn", "Mật khẩu phải có ít nhất 8 ký tự, gồm cả chữ hoa, chữ thường và số");
+    if (password.length < 5) {
+      error("Mật khẩu quá ngắn", "Mật khẩu phải có ít nhất 5 ký tự");
       return;
     }
     try {

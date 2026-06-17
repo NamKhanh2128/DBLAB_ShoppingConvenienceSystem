@@ -27,7 +27,14 @@ UPDATE KhoThucPham SET NgayCapNhat = GETDATE() WHERE NgayCapNhat IS NULL;
 GO
 
 -- Đặt mặc định cho NgayCapNhat
-ALTER TABLE KhoThucPham ADD CONSTRAINT DF_KhoThucPham_NgayCapNhat DEFAULT GETDATE() FOR NgayCapNhat;
+IF NOT EXISTS (
+    SELECT 1 FROM sys.default_constraints 
+    WHERE parent_object_id = OBJECT_ID('KhoThucPham') 
+      AND name = 'DF_KhoThucPham_NgayCapNhat'
+)
+BEGIN
+    ALTER TABLE KhoThucPham ADD CONSTRAINT DF_KhoThucPham_NgayCapNhat DEFAULT GETDATE() FOR NgayCapNhat;
+END
 GO
 
 

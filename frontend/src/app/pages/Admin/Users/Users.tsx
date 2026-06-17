@@ -92,6 +92,7 @@ export function Users() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [modalMode, setModalMode] = useState<"add" | "edit">("add");
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [resetPwResult, setResetPwResult] = useState<{ user: AdminUser; tempPassword: string } | null>(null);
 
   const filtered = useMemo(() => {
     return users.filter(u => {
@@ -132,8 +133,13 @@ export function Users() {
     }
   };
 
-  const handleResetPw = (u: AdminUser) => {
-    toast.success(`Đã gửi email khôi phục mật khẩu tới "${u.email}"`);
+  const handleResetPw = async (u: AdminUser) => {
+    try {
+      const res = await adminApi.resetPassword(Number(u.id));
+      setResetPwResult({ user: u, tempPassword: res.data.tempPassword });
+    } catch (e: any) {
+      toast.error(e.message || "Reset mật khẩu thất bại");
+    }
   };
 
   const handleSave = async (data: any) => {
@@ -371,8 +377,50 @@ export function Users() {
       <AddEditUserModal isOpen={editOpen} onClose={() => setEditOpen(false)} onSave={handleSave}
         user={selectedUser} mode={modalMode} existingEmails={users.map(u => u.email)} />
 
+      {/* Modal hiển thị mật khẩu tạm thời sau khi reset */}
+      <Modal
+        isOpen={!!resetPwResult}
+        onClose={() => setResetPwResult(null)}
+        title="Reset mật khẩu thành công"
+        size="sm"
+      >
+        <div className="space-y-4 p-1">
+          <div className="flex items-start gap-3 p-3 bg-green-50 border border-green-200 rounded-xl text-green-900 text-sm">
+            <CheckCircle className="w-5 h-5 text-green-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold">Mật khẩu đã được đặt lại!</p>
+              <p className="text-xs text-green-700 mt-0.5">
+                Vui lòng gửi mật khẩu tạm thời này cho người dùng <strong>{resetPwResult?.user.name}</strong> và yêu cầu đổi ngay sau khi đăng nhập.
+              </p>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Mật khẩu tạm thời</p>
+            <div className="flex items-center gap-2 p-3 bg-gray-100 rounded-lg border border-gray-200">
+              <code className="flex-1 font-mono text-lg font-black text-[var(--purple-deep)] tracking-widest">
+                {resetPwResult?.tempPassword}
+              </code>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  navigator.clipboard.writeText(resetPwResult?.tempPassword || "");
+                  toast.success("Đã sao chép mật khẩu!");
+                }}
+                className="rounded-lg text-xs"
+              >
+                Sao chép
+              </Button>
+            </div>
+          </div>
+          <Button onClick={() => setResetPwResult(null)} className="w-full bg-gradient-purple text-white font-bold rounded-lg">
+            Đã hiểu
+          </Button>
+        </div>
+      </Modal>
+
       {/* Giao diện Xác nhận xóa 2 lớp cực kỳ an toàn */}
-      <Modal 
+      <Modal
         isOpen={deleteOpen} 
         onClose={() => { setDeleteOpen(false); setDeleteConfirmText(""); }} 
         title="Xác nhận xóa tài khoản nguy hiểm"

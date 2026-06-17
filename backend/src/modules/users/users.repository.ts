@@ -74,7 +74,7 @@ export class UsersRepository {
       .input('pw', sql.NVarChar(255), hashedPassword)
       .query(`
         UPDATE NguoiDung
-        SET MatKhauHash = @pw, NgayCapNhat = GETDATE()
+        SET MatKhauHash = @pw, NgayCapNhat = GETDATE(), MatKhauNgayCapNhat = GETUTCDATE()
         WHERE MaNguoiDung = @id
       `);
   }

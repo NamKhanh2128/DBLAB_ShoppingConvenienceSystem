@@ -126,4 +126,27 @@ export class FamilyController {
       return createSuccess(res, data);
     } catch (e) { next(e); }
   }
+
+  // PUT /api/v1/family/:groupId/members/:userId — cập nhật thông tin thành viên
+  async updateMember(req: any, res: Response, next: NextFunction) {
+    try {
+      const groupId      = Number(req.params.groupId);
+      const targetUserId = Number(req.params.userId);
+      const { hoTen, soDienThoai } = req.body;
+      const data = await svc.updateMember(groupId, targetUserId, { hoTen, soDienThoai }, req.user.id);
+      return createSuccess(res, data, 'Cập nhật thông tin thành viên thành công');
+    } catch (e) { next(e); }
+  }
+
+  // PATCH /api/v1/family/:groupId/members/:userId/role — thay đổi vai trò thành viên
+  async updateMemberRole(req: any, res: Response, next: NextFunction) {
+    try {
+      const groupId      = Number(req.params.groupId);
+      const targetUserId = Number(req.params.userId);
+      const { role } = req.body;
+      if (!role) throw { statusCode: 400, message: 'Thiếu tham số role' };
+      const data = await svc.setMemberRole(groupId, targetUserId, role, req.user.id);
+      return createSuccess(res, data, 'Cập nhật vai trò thành viên thành công');
+    } catch (e) { next(e); }
+  }
 }

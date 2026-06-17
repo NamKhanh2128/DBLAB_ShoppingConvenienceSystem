@@ -39,7 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(token);
     setUser(u);
     setUserState(u);
-    const gid = u?.MaNhom ?? u?.groupId ?? u?.maNhom ?? Number(localStorage.getItem('groupId')) ?? null;
+    const gid = u?.MaNhom ?? u?.groupId ?? u?.maNhom ?? null;
     if (gid) {
       updateGroupId(Number(gid));
     }

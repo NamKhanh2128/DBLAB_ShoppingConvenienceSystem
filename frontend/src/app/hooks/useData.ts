@@ -11,10 +11,12 @@ export function useInventory() {
   const [expiring, setExpiring] = useState<any[]>([]);
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!groupId) return;
     setLoading(true);
+    setError(null);
     try {
       const [res, expRes, logsRes] = await Promise.all([
         inventoryApi.getAll(groupId),
@@ -24,8 +26,9 @@ export function useInventory() {
       setItems(res.data || []);
       setExpiring(expRes.data || []);
       setLogs(logsRes.data || []);
-    } catch (e) {
+    } catch (e: any) {
       console.error('Inventory load error:', e);
+      setError(e.message || 'Lỗi tải dữ liệu kho');
     } finally {
       setLoading(false);
     }
@@ -48,7 +51,7 @@ export function useInventory() {
     await load();
   };
 
-  return { items, expiring, logs, loading, addItem, updateItem, deleteItem, reload: load };
+  return { items, expiring, logs, loading, error, addItem, updateItem, deleteItem, reload: load };
 }
 
 // ────────────────────────────────────────────────
@@ -59,15 +62,18 @@ export function useShopping() {
   const [lists, setLists] = useState<any[]>([]);
   const [items, setItems] = useState<Record<number, any[]>>({});
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const loadLists = useCallback(async () => {
     if (!groupId) return;
     setLoading(true);
+    setError(null);
     try {
       const res = await shoppingApi.getLists(groupId);
       setLists(res.data || []);
-    } catch (e) {
+    } catch (e: any) {
       console.error('Shopping lists load error:', e);
+      setError(e.message || 'Lỗi tải danh sách mua sắm');
     } finally {
       setLoading(false);
     }
@@ -133,7 +139,7 @@ export function useShopping() {
   };
 
   return {
-    lists, items, loading,
+    lists, items, loading, error,
     loadLists, loadItems,
     createList, deleteList,
     addItem, toggleItem, updateItem, deleteItem,
@@ -149,17 +155,20 @@ export function useMealPlan() {
   const [todayMeals, setTodayMeals] = useState<any[]>([]);
   const [weekMeals, setWeekMeals] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const loadToday = useCallback(async () => {
     if (!groupId) return [];
     setLoading(true);
+    setError(null);
     try {
       const res = await mealPlanApi.getToday(groupId);
       const data = res.data || [];
       setTodayMeals(data);
       return data;
-    } catch (e) {
+    } catch (e: any) {
       console.error('Meal plan load error:', e);
+      setError(e.message || 'Lỗi tải kế hoạch bữa ăn');
       return [];
     } finally {
       setLoading(false);
@@ -191,7 +200,7 @@ export function useMealPlan() {
     await loadToday();
   };
 
-  return { todayMeals, weekMeals, loading, loadToday, loadWeek, addMeal, removeMeal, setTodayMeals, setWeekMeals };
+  return { todayMeals, weekMeals, loading, error, loadToday, loadWeek, addMeal, removeMeal, setTodayMeals, setWeekMeals };
 }
 
 // ────────────────────────────────────────────────
@@ -203,15 +212,18 @@ export function useRecipes() {
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [suggestLoading, setSuggestLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       // Truyền groupId để lấy cả system recipes + recipes riêng của nhóm
       const res = await recipesApi.getAll(groupId ?? undefined);
       setRecipes(res.data || []);
-    } catch (e) {
+    } catch (e: any) {
       console.error('Recipes load error:', e);
+      setError(e.message || 'Lỗi tải công thức nấu ăn');
     } finally {
       setLoading(false);
     }
@@ -257,7 +269,7 @@ export function useRecipes() {
   };
 
   return {
-    recipes, suggestions, loading, suggestLoading,
+    recipes, suggestions, loading, suggestLoading, error,
     addRecipe, updateRecipe, deleteRecipe,
     cookRecipe, loadSuggestions,
     reload: load,
@@ -295,7 +307,7 @@ export function useReports() {
 
   useEffect(() => {
     load();
-  }, [groupId]);
+  }, [groupId, load]);
 
   const applyFilters = async (newFilters: { startDate?: string; endDate?: string }) => {
     setFilters(newFilters);

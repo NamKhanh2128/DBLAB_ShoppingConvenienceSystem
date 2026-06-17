@@ -45,6 +45,7 @@ export function Inventory() {
   const [viewItem, setViewItem] = useState<any>(null);
   const [useItemModal, setUseItemModal] = useState<any>(null);
   const [deleteItemModal, setDeleteItemModal] = useState<any>(null);
+  const [editingItem, setEditingItem] = useState<any>(null);
 
   // Quick form state
   const [formName, setFormName] = useState("");
@@ -222,10 +223,16 @@ export function Inventory() {
     }
 
     try {
-      await addItem(payload);
-      success("✅ Thành công!", `"${payload.tenTP}" đã được thêm vào kho.`);
+      if (editingItem) {
+        await updateItem(editingItem.id, { ...payload, version: editingItem.version });
+        success("✅ Cập nhật thành công!", `"${payload.tenTP}" đã được cập nhật.`);
+        setEditingItem(null);
+      } else {
+        await addItem(payload);
+        success("✅ Thành công!", `"${payload.tenTP}" đã được thêm vào kho.`);
+      }
     } catch (e: any) {
-      error("Không thể thêm thực phẩm", e.message || "Lỗi hệ thống");
+      error(editingItem ? "Không thể cập nhật thực phẩm" : "Không thể thêm thực phẩm", e.message || "Lỗi hệ thống");
     }
   };
 
@@ -782,12 +789,21 @@ export function Inventory() {
                     </div>
                   </div>
 
+                  {editingItem && (
+                    <button
+                      type="button"
+                      onClick={() => { setEditingItem(null); setFormName(""); setFormQty(""); setFormUnit("cái"); setFormExpiry(""); setFormNotes(""); }}
+                      className="w-full text-xs text-[var(--text-muted)] underline mb-1"
+                    >
+                      Hủy chỉnh sửa
+                    </button>
+                  )}
                   <Button
                     type="submit"
                     className="w-full bg-gradient-to-r from-[var(--success)] to-[#16A34A] text-white font-bold py-2.5 shadow-md hover-lift rounded-[var(--radius-btn)] mt-3 flex items-center justify-center gap-1.5"
                   >
                     <Plus className="w-4 h-4" />
-                    Thêm vào {formLocation}
+                    {editingItem ? `Cập nhật "${editingItem.name}"` : `Thêm vào ${formLocation}`}
                   </Button>
                 </form>
 
@@ -872,14 +888,35 @@ export function Inventory() {
 
       {/* ─── MODALS ──────────────────────────────────────────────────────── */}
       <AddInventoryItemModal isOpen={showAddItem} onClose={() => setShowAddItem(false)} onSubmit={handleAddSubmit} />
-      <FilterModal isOpen={showFilter} onClose={() => setShowFilter(false)} onApply={() => setShowFilter(false)} type="inventory" />
+      <FilterModal
+        isOpen={showFilter}
+        onClose={() => setShowFilter(false)}
+        type="inventory"
+        onApply={(f) => {
+          const locationMap: Record<string, string> = { fridge: "Fridge", freezer: "Freezer", pantry: "Pantry" };
+          setSelectedLocation(locationMap[f.location] || "Tất cả");
+          const expiryArr: string[] = f.expiryStatus || [];
+          setExpiryFilter(expiryArr.length === 1 ? expiryArr[0] : "all");
+          setShowFilter(false);
+        }}
+      />
       
       {viewItem && (
         <ViewInventoryDetailsModal
           isOpen={!!viewItem}
           onClose={() => setViewItem(null)}
           item={viewItem}
-          onEdit={(item: any) => { setViewItem(null); }}
+          itemLogs={logs.filter((l: any) => l.MaTP === viewItem?.id)}
+          onEdit={(item: any) => {
+            setViewItem(null);
+            setEditingItem(item);
+            setFormName(item.name);
+            setFormQty(String(item.quantity));
+            setFormUnit(item.unit || "cái");
+            setFormLocation(item.location || "Tủ lạnh");
+            setFormExpiry(item.expiryDate || "");
+            setRightTab("add");
+          }}
           onUse={(item: any) => { setViewItem(null); setUseItemModal(item); }}
         />
       )}

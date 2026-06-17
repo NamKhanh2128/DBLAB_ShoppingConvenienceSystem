@@ -92,12 +92,13 @@ export class MealPlanService {
   async copyMealPlanRange(groupId: number, fromStart: string, fromEnd: string, toStart: string, userId: number) {
     await this.checkGroupMembership(groupId, userId);
 
-    // Chặn sao chép kế hoạch sang quá khứ
+    // Chặn sao chép kế hoạch sang quá khứ (buffer 1 ngày cho UTC+7)
     const d = new Date(toStart);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    yesterday.setHours(0, 0, 0, 0);
     d.setHours(0, 0, 0, 0);
-    if (d.getTime() < today.getTime()) {
+    if (d.getTime() < yesterday.getTime()) {
       throw { statusCode: 400, message: 'Không được sao chép kế hoạch bữa ăn vào các ngày trong quá khứ' };
     }
 
@@ -110,21 +111,31 @@ export class MealPlanService {
   async checkIngredientsSufficiency(maMon: number, soKhauPhan: number, groupId: number, userId: number) {
     await this.checkGroupMembership(groupId, userId);
 
-    // 1. Lấy tất cả nguyên liệu tiêu chuẩn của công thức
-    const recipeIngredients = await this.recipesRepo.getIngredients(maMon);
-    
+    // 1. Lấy tất cả nguyên liệu tiêu chuẩn của công thức và thông tin recipe
+    const [recipeIngredients, recipe] = await Promise.all([
+      this.recipesRepo.getIngredients(maMon),
+      this.recipesRepo.getById(maMon),
+    ]);
+
     // 2. Lấy kho thực phẩm của nhóm gia đình hiện có
     const pantryItems = await this.inventoryRepo.getByGroup(groupId);
 
+    // Số khẩu phần gốc của công thức (BUG-019: không hardcode 4)
+    const defaultServings = recipe?.KhauPhan ?? 1;
+
     // 3. Tiến hành đối chiếu và tính toán
     const details = recipeIngredients.map((ing: any) => {
-      // Giả sử khẩu phần chuẩn của công thức mặc định là cho 4 người ăn
-      const requiredQty = ing.SoLuongCan * (soKhauPhan / 4);
+      const requiredQty = ing.SoLuongCan * (soKhauPhan / defaultServings);
 
-      // Tìm kiếm nguyên liệu trong tủ lạnh bằng cách so khớp tên không phân biệt hoa thường
-      const matchedPantryItems = pantryItems.filter(
-        (p: any) => p.TenTP.toLowerCase().trim() === ing.TenTP.toLowerCase().trim()
-      );
+      // Match tên + đơn vị (BUG-018: tránh nhầm gram vs ml)
+      const matchedPantryItems = pantryItems.filter((p: any) => {
+        const nameMatch = p.TenTP.toLowerCase().trim() === ing.TenTP.toLowerCase().trim();
+        if (!nameMatch) return false;
+        if (ing.DonVi && p.DonVi) {
+          return p.DonVi.toLowerCase().trim() === ing.DonVi.toLowerCase().trim();
+        }
+        return true;
+      });
       
       const availableQty = matchedPantryItems.reduce((sum: number, p: any) => sum + p.SoLuong, 0);
       const isEnough = availableQty >= requiredQty;

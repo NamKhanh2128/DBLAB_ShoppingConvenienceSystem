@@ -27,6 +27,8 @@ router.post('/join', validateRequest(JoinFamilySchema),   ctrl.joinFamily.bind(c
 router.get('/:groupId/members',                   requireGroupRole(['LEADER', 'MEMBER']), ctrl.getMembers.bind(ctrl));
 router.get('/:groupId/invites',                   requireGroupRole(['LEADER', 'MEMBER']), ctrl.getInvites.bind(ctrl));
 router.post('/:groupId/invites',                 requireGroupRole(['LEADER']), validateRequest(GenerateInviteSchema), ctrl.generateInvite.bind(ctrl));
+router.put('/:groupId/members/:userId',          requireGroupRole(['LEADER']), ctrl.updateMember.bind(ctrl));
+router.patch('/:groupId/members/:userId/role',   requireGroupRole(['LEADER']), ctrl.updateMemberRole.bind(ctrl));
 router.delete('/:groupId/members/:userId',       requireGroupRole(['LEADER', 'MEMBER']), ctrl.removeMember.bind(ctrl));
 router.delete('/:groupId/invites/:inviteId',     requireGroupRole(['LEADER']), ctrl.revokeInvite.bind(ctrl));
 
