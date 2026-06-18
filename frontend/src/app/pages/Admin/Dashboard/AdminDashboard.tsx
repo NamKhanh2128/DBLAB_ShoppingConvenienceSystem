@@ -1,59 +1,152 @@
 import { useNavigate } from "react-router";
 import { useState } from "react";
-import { Users, Database, Activity, AlertCircle, TrendingUp, Clock, Shield, Ban, UserCheck, ArrowRight, Trash2, ShieldAlert, CheckCircle2, HardDrive, Cpu } from "lucide-react";
+import {
+  Users, Database, Activity, AlertCircle, Clock, Shield, Ban,
+  UserCheck, ArrowRight, Trash2, ShieldAlert, CheckCircle2,
+  BookOpen, ShoppingCart, Home
+} from "lucide-react";
 import { Card, CardContent } from "../../../components/ui/card";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import {
+  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer, PieChart, Pie, Cell
+} from 'recharts';
 import { PageHeader } from "../../../components/common/PageHeader";
 import { StatCard } from "../../../components/common/StatCard";
 import { useAdmin } from "../../../context/AdminContext";
 import { toast } from "../../../components/common/Toast";
 import Modal from "../../../components/common/Modal";
 
-const monthlyData = [
-  { month: 'T1', users: 1200, groups: 450 },
-  { month: 'T2', users: 1800, groups: 680 },
-  { month: 'T3', users: 2100, groups: 890 },
-  { month: 'T4', users: 2847, groups: 1234 },
-  { month: 'T5', users: 3200, groups: 1450 },
-  { month: 'T6', users: 3850, groups: 1680 },
-];
-
-const activityData = [
-  { name: "Đăng nhập", value: 450, color: "var(--purple-deep)" },
-  { name: "Mua sắm", value: 320, color: "var(--gold)" },
-  { name: "Công thức", value: 180, color: "var(--success)" },
-  { name: "Báo cáo", value: 120, color: "var(--food-orange)" },
-];
-
 export function AdminDashboard() {
-  const { users, auditLogs, dashStats, cleanupFakeUsers, reload } = useAdmin();
+  const { users, auditLogs, dashStats, reportsStats, cleanupFakeUsers, reload } = useAdmin();
   const navigate = useNavigate();
 
   const [cleanupOpen, setCleanupOpen] = useState(false);
   const [cleaning, setCleaning] = useState(false);
 
-  // Lấy chỉ số thống kê từ API hoặc fallback local state
-  const totalUsers = dashStats?.totalUsers ?? users.length;
-  const totalGroups = dashStats?.totalGroups ?? 12;
+  // ── Stats từ API thực ──────────────────────────────────────────
+  const totalUsers  = dashStats?.totalUsers  ?? users.length;
+  const totalGroups = dashStats?.totalGroups ?? 0;
   const activeUsers = dashStats?.activeUsers ?? users.filter(u => u.status === "active").length;
   const bannedUsers = dashStats?.bannedUsers ?? users.filter(u => u.status === "locked").length;
   const newUsersCount = dashStats?.newUsersLast24h ?? 0;
-  
+  const totalRecipes = dashStats?.totalRecipes ?? 0;
+  const totalLists   = dashStats?.totalLists   ?? 0;
+
   const errorLogs = auditLogs.filter(l => l.status === "error").length;
 
   const stats = [
-    { title: "Tổng người dùng", value: totalUsers.toLocaleString(), change: "+12%", trend: "up" as const, icon: Users, gradient: "from-[var(--purple-deep)] to-[var(--purple-light)]" },
-    { title: "Đang hoạt động", value: activeUsers.toLocaleString(), change: `${totalUsers > 0 ? Math.round(activeUsers/totalUsers*100) : 100}%`, trend: "up" as const, icon: UserCheck, gradient: "from-green-500 to-green-400" },
-    { title: "Bị cấm", value: bannedUsers.toLocaleString(), change: bannedUsers > 0 ? "Cần xem lại" : "Tốt", trend: bannedUsers > 0 ? "down" as const : "up" as const, icon: Ban, gradient: "from-red-500 to-red-600" },
-    { title: "Lỗi hệ thống", value: errorLogs.toLocaleString(), change: errorLogs === 0 ? "Bình thường" : "Có lỗi", trend: errorLogs > 0 ? "down" as const : "up" as const, icon: AlertCircle, gradient: "from-orange-500 to-orange-400" },
+    {
+      title: "Tổng người dùng",
+      value: totalUsers.toLocaleString(),
+      change: `${newUsersCount} mới hôm nay`,
+      trend: "up" as const,
+      icon: Users,
+      gradient: "from-[var(--purple-deep)] to-[var(--purple-light)]"
+    },
+    {
+      title: "Đang hoạt động",
+      value: activeUsers.toLocaleString(),
+      change: `${totalUsers > 0 ? Math.round(activeUsers / totalUsers * 100) : 100}%`,
+      trend: "up" as const,
+      icon: UserCheck,
+      gradient: "from-green-500 to-green-400"
+    },
+    {
+      title: "Bị cấm",
+      value: bannedUsers.toLocaleString(),
+      change: bannedUsers > 0 ? "Cần xem lại" : "Tốt",
+      trend: bannedUsers > 0 ? "down" as const : "up" as const,
+      icon: Ban,
+      gradient: "from-red-500 to-red-600"
+    },
+    {
+      title: "Lỗi hệ thống",
+      value: errorLogs.toLocaleString(),
+      change: errorLogs === 0 ? "Bình thường" : "Có lỗi",
+      trend: errorLogs > 0 ? "down" as const : "up" as const,
+      icon: AlertCircle,
+      gradient: "from-orange-500 to-orange-400"
+    },
   ];
 
-  const recentUsers = [...users].sort((a, b) => b.joinDate.localeCompare(a.joinDate)).slice(0, 5);
+  const recentUsers = [...users]
+    .sort((a, b) => b.joinDate.localeCompare(a.joinDate))
+    .slice(0, 5);
   const recentLogs = auditLogs.slice(0, 5);
 
-  // Xử lý dọn dẹp hàng loạt tài khoản ảo
+  // ── Biểu đồ từ reportsStats.trend (chi tiêu theo tháng — thực) ──
+  const trendChartData = (reportsStats?.trend || []).map((item: any) => ({
+    label: item.label || '',
+    spend: Math.round(Number(item.spend || 0) / 1000), // đổi sang nghìn đồng cho dễ đọc
+    waste: Math.round(Number(item.waste || 0) / 1000),
+  }));
+
+  // ── Biểu đồ hoạt động 7 ngày từ reportsStats.activity (thực) ──
+  const activityChartData = (reportsStats?.activity || []).map((item: any) => ({
+    day: item.day || '',
+    mới: item.new || 0,
+    hoàn_thành: item.active || 0,
+  }));
+
+  // ── Biểu đồ phân bổ danh mục chi tiêu từ reportsStats.categoryDistribution (thực) ──
+  const categoryColors = ['var(--purple-deep)', 'var(--gold)', 'var(--success)', 'var(--food-orange)', '#EC4899', '#6366F1', '#14B8A6'];
+  const categoryChartData = (reportsStats?.categoryDistribution || [])
+    .filter((c: any) => Number(c.value || 0) > 0)
+    .slice(0, 4)
+    .map((item: any) => ({
+      name: item.name || 'Khác',
+      value: Number(item.value || 0),
+    }));
+
+  // ── Thống kê hệ thống thực từ dashStats ──────────────────────
+  const systemMetrics = [
+    {
+      label: "Tổng nhóm gia đình",
+      value: totalGroups.toLocaleString(),
+      sub: "Đang hoạt động",
+      color: "text-purple-600",
+      icon: Home,
+    },
+    {
+      label: "Công thức nấu ăn",
+      value: totalRecipes.toLocaleString(),
+      sub: "Toàn hệ thống",
+      color: "text-emerald-600",
+      icon: BookOpen,
+    },
+    {
+      label: "Phiên đi chợ",
+      value: totalLists.toLocaleString(),
+      sub: "Đã tạo",
+      color: "text-blue-600",
+      icon: ShoppingCart,
+    },
+    {
+      label: "Thành viên/Nhóm",
+      value: totalGroups > 0 ? (totalUsers / totalGroups).toFixed(1) : "0",
+      sub: "Trung bình",
+      color: "text-indigo-600",
+      icon: Users,
+    },
+    {
+      label: "Tài khoản mới",
+      value: newUsersCount.toLocaleString(),
+      sub: "Trong 24h qua",
+      color: newUsersCount > 50 ? "text-red-600" : "text-green-600",
+      icon: Activity,
+    },
+    {
+      label: "Nhật ký lỗi",
+      value: errorLogs.toLocaleString(),
+      sub: errorLogs === 0 ? "Hệ thống ổn định" : "Cần kiểm tra",
+      color: errorLogs > 0 ? "text-red-600" : "text-green-600",
+      icon: AlertCircle,
+    },
+  ];
+
+  // ── Dọn dẹp tài khoản ảo ─────────────────────────────────────
   const handleCleanup = async () => {
     setCleaning(true);
     try {
@@ -61,21 +154,20 @@ export function AdminDashboard() {
       toast.success(`Đã dọn dẹp thành công ${cleaned} tài khoản ảo đăng ký giả mạo!`);
       setCleanupOpen(false);
       await reload();
-    } catch (e) {
+    } catch {
       toast.error("Không thể dọn dẹp hệ thống.");
     } finally {
       setCleaning(false);
     }
   };
 
-  // Ngưỡng phát hiện bất thường: > 50 tài khoản trong 24h qua (trong môi trường thực tế là >500)
   const isSpamDetected = newUsersCount > 50;
 
   return (
     <div className="space-y-6 animate-slide-up">
       <PageHeader title="Admin Dashboard" description="Tổng quan và quản lý hệ thống" icon={Shield} />
 
-      {/* CẢNH BÁO ĐĂNG KÝ BẤT THƯỜNG (Spam Alarm Banner) */}
+      {/* CẢNH BÁO ĐĂNG KÝ BẤT THƯỜNG */}
       {isSpamDetected && (
         <div className="bg-red-50 border-2 border-red-200 rounded-3xl p-6 flex flex-col md:flex-row items-center justify-between gap-4 animate-pulse">
           <div className="flex items-center gap-4 text-left">
@@ -85,11 +177,11 @@ export function AdminDashboard() {
             <div>
               <h3 className="font-extrabold text-red-900 text-lg">CẢNH BÁO ĐĂNG KÝ BẤT THƯỜNG!</h3>
               <p className="text-red-700 text-sm mt-0.5">
-                Phát hiện <strong>{newUsersCount}</strong> tài khoản mới đăng ký trong 24 giờ qua. Đây có thể là hành vi spam đăng ký hàng loạt từ robot hoặc script giả mạo.
+                Phát hiện <strong>{newUsersCount}</strong> tài khoản mới đăng ký trong 24 giờ qua. Đây có thể là hành vi spam.
               </p>
             </div>
           </div>
-          <Button 
+          <Button
             onClick={() => setCleanupOpen(true)}
             className="bg-red-600 hover:bg-red-700 text-white font-bold px-6 py-3 rounded-2xl shadow-md hover-lift flex items-center gap-2"
           >
@@ -106,75 +198,126 @@ export function AdminDashboard() {
         ))}
       </div>
 
-      {/* Charts */}
+      {/* Charts — dữ liệu thực */}
       <div className="grid lg:grid-cols-3 gap-6">
+        {/* Biểu đồ chi tiêu & lãng phí theo tháng (từ BaoCaoChiTieu) */}
         <Card className="lg:col-span-2 border-none shadow-[var(--shadow-card)] rounded-[var(--radius)] bg-white">
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
               <div>
-                <h3 className="text-xl font-black text-[var(--text-dark)]">Tăng trưởng người dùng</h3>
-                <p className="text-sm text-[var(--text-muted)] mt-1">6 tháng gần nhất</p>
+                <h3 className="text-xl font-black text-[var(--text-dark)]">Chi tiêu & Lãng phí theo tháng</h3>
+                <p className="text-sm text-[var(--text-muted)] mt-1">
+                  {trendChartData.length > 0 ? `${trendChartData.length} tháng gần nhất · Đơn vị: nghìn ₫` : 'Chưa có dữ liệu báo cáo'}
+                </p>
               </div>
-              <Badge className="bg-gradient-purple text-white rounded-full px-4 py-1.5 font-semibold shadow-md">
-                <TrendingUp className="w-3.5 h-3.5 mr-1" strokeWidth={2.5} />+35%
-              </Badge>
+              {trendChartData.length > 0 && (
+                <Badge className="bg-gradient-purple text-white rounded-full px-4 py-1.5 font-semibold shadow-md cursor-pointer" onClick={() => navigate('/admin/reports')}>
+                  Xem chi tiết →
+                </Badge>
+              )}
             </div>
-            <ResponsiveContainer width="100%" height={260}>
-              <LineChart data={monthlyData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-light)" />
-                <XAxis dataKey="month" stroke="var(--text-muted)" style={{ fontSize: '12px', fontWeight: 600 }} />
-                <YAxis stroke="var(--text-muted)" style={{ fontSize: '12px', fontWeight: 600 }} />
-                <Tooltip contentStyle={{ background: 'white', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-sm)', fontWeight: 600 }} />
-                <Line type="monotone" dataKey="users" stroke="var(--purple-deep)" strokeWidth={3} dot={{ fill: "var(--purple-deep)", r: 5 }} name="Người dùng" />
-                <Line type="monotone" dataKey="groups" stroke="var(--gold)" strokeWidth={3} dot={{ fill: "var(--gold)", r: 5 }} name="Nhóm" />
-              </LineChart>
-            </ResponsiveContainer>
+            {trendChartData.length === 0 ? (
+              <div className="h-[260px] flex flex-col items-center justify-center text-[var(--text-muted)] gap-3">
+                <Database className="w-10 h-10 opacity-30" />
+                <p className="text-sm font-medium">Chưa có dữ liệu báo cáo chi tiêu</p>
+                <p className="text-xs opacity-70">Dữ liệu sẽ xuất hiện sau khi có phiên đi chợ hoàn thành</p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={260}>
+                <LineChart data={trendChartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-light)" />
+                  <XAxis dataKey="label" stroke="var(--text-muted)" style={{ fontSize: '12px', fontWeight: 600 }} />
+                  <YAxis stroke="var(--text-muted)" style={{ fontSize: '12px', fontWeight: 600 }} tickFormatter={(v) => `${v}k`} />
+                  <Tooltip
+                    formatter={(value: number, name: string) => [
+                      `${Number(value).toLocaleString()}k ₫`,
+                      name === 'spend' ? 'Chi tiêu' : name === 'waste' ? 'Lãng phí' : name
+                    ]}
+                    contentStyle={{ background: 'white', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-sm)', fontWeight: 600 }}
+                  />
+                  <Line type="monotone" dataKey="spend" stroke="var(--purple-deep)" strokeWidth={3} dot={{ fill: "var(--purple-deep)", r: 5 }} name="Chi tiêu" />
+                  <Line type="monotone" dataKey="waste" stroke="#EF4444" strokeWidth={2.5} strokeDasharray="4 4" dot={{ fill: "#EF4444", r: 4 }} name="Lãng phí" />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
 
+        {/* Biểu đồ phân bổ danh mục chi tiêu (từ ChiTietMuaSam) */}
         <Card className="border-none shadow-[var(--shadow-card)] rounded-[var(--radius)] bg-white">
           <CardContent className="p-6">
-            <h3 className="text-xl font-black text-[var(--text-dark)] mb-4">Phân bổ hoạt động</h3>
-            <ResponsiveContainer width="100%" height={200}>
-              <PieChart>
-                <Pie data={activityData} cx="50%" cy="50%" innerRadius={55} outerRadius={85} paddingAngle={5} dataKey="value">
-                  {activityData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-                </Pie>
-                <Tooltip contentStyle={{ background: 'white', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-sm)', fontWeight: 600 }} />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="grid grid-cols-2 gap-2 mt-3">
-              {activityData.map((item, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
-                  <div>
-                    <p className="text-xs font-semibold text-[var(--text-dark)]">{item.name}</p>
-                    <p className="text-xs text-[var(--text-muted)]">{item.value}</p>
-                  </div>
+            <h3 className="text-xl font-black text-[var(--text-dark)] mb-1">Phân bổ danh mục</h3>
+            <p className="text-xs text-[var(--text-muted)] mb-4">Chi tiêu thực tế theo quầy hàng</p>
+            {categoryChartData.length === 0 ? (
+              <div className="h-[200px] flex flex-col items-center justify-center text-[var(--text-muted)] gap-2">
+                <ShoppingCart className="w-8 h-8 opacity-30" />
+                <p className="text-xs font-medium text-center">Chưa có mặt hàng nào<br />được ghi nhận danh mục</p>
+              </div>
+            ) : (
+              <>
+                <ResponsiveContainer width="100%" height={200}>
+                  <PieChart>
+                    <Pie data={categoryChartData} cx="50%" cy="50%" innerRadius={55} outerRadius={85} paddingAngle={5} dataKey="value">
+                      {categoryChartData.map((_: any, i: number) => <Cell key={i} fill={categoryColors[i % categoryColors.length]} />)}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value: number) => [`${value.toLocaleString()} ₫`, 'Chi tiêu']}
+                      contentStyle={{ background: 'white', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-sm)', fontWeight: 600 }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="grid grid-cols-2 gap-2 mt-3">
+                  {categoryChartData.map((item: any, i: number) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: categoryColors[i % categoryColors.length] }} />
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-[var(--text-dark)] truncate">{item.name}</p>
+                        <p className="text-xs text-[var(--text-muted)]">{item.value.toLocaleString()}₫</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      {/* BẢNG GIÁM SÁT SỨC KHỎE HỆ THỐNG (System Error & Health Monitor) */}
+      {/* Biểu đồ hoạt động đi chợ 7 ngày */}
+      <Card className="border-none shadow-[var(--shadow-card)] rounded-[var(--radius)] bg-white">
+        <CardContent className="p-6">
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <div>
+              <h3 className="text-lg font-black text-[var(--text-dark)]">📊 Hoạt động Đi Chợ (7 Ngày Qua)</h3>
+              <p className="text-xs text-[var(--text-muted)] mt-0.5">Số phiên đi chợ tạo mới và hoàn thành mỗi ngày — dữ liệu thực</p>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => navigate('/admin/reports')}
+              className="text-[var(--purple-deep)] font-semibold text-xs hover:bg-[var(--card-bg)] rounded-[8px]">
+              Xem báo cáo <ArrowRight className="w-3.5 h-3.5 ml-1" />
+            </Button>
+          </div>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={activityChartData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-light)" />
+              <XAxis dataKey="day" stroke="var(--text-muted)" fontSize={11} tickLine={false} axisLine={false} />
+              <YAxis stroke="var(--text-muted)" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
+              <Tooltip contentStyle={{ background: 'white', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-sm)', fontWeight: 600 }} />
+              <Bar dataKey="mới" name="Giỏ tạo mới" fill="var(--gold)" radius={[4, 4, 0, 0]} barSize={22} />
+              <Bar dataKey="hoàn_thành" name="Đã hoàn thành" fill="var(--purple-deep)" radius={[4, 4, 0, 0]} barSize={22} />
+            </BarChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
+
+      {/* Bảng thống kê hệ thống thực */}
       <Card className="border-none shadow-[var(--shadow-card)] rounded-[var(--radius)] bg-white">
         <CardContent className="p-6 space-y-4">
           <div className="flex items-center gap-2 border-b pb-3">
-            <Activity className="w-5 h-5 text-[var(--purple-deep)] animate-pulse" />
-            <h3 className="text-lg font-black text-[var(--text-dark)]">🖥️ Bảng Giám Sát Sức Khỏe Hệ Thống</h3>
+            <Activity className="w-5 h-5 text-[var(--purple-deep)]" />
+            <h3 className="text-lg font-black text-[var(--text-dark)]">📈 Thống Kê Hệ Thống Thực Tế</h3>
           </div>
-
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            {[
-              { label: "Uptime hệ thống", value: "99.98%", sub: "Xuất sắc", color: "text-green-600", icon: CheckCircle2 },
-              { label: "Tỷ lệ lỗi API 500", value: `${errorLogs > 0 ? "0.04%" : "0.01%"}`, sub: "Mức độ: An toàn", color: "text-green-600", icon: Activity },
-              { label: "Tiêu thụ CPU", value: "24%", sub: "Ổn định", color: "text-blue-600", icon: Cpu },
-              { label: "Tiêu thụ RAM", value: "48%", sub: "4.8GB / 10GB", color: "text-blue-600", icon: HardDrive },
-              { label: "Độ trễ Database", value: "8ms", sub: "MSSQL Connection", color: "text-green-600", icon: Database },
-              { label: "Hàng đợi Email", value: "0", sub: "Hoàn tất 100%", color: "text-slate-600", icon: Clock },
-            ].map((item, index) => (
+            {systemMetrics.map((item, index) => (
               <div key={index} className="bg-[var(--card-bg)] p-4 rounded-2xl border border-[var(--border-light)] flex flex-col justify-between space-y-1">
                 <p className="text-xs font-bold text-[var(--text-muted)]">{item.label}</p>
                 <p className={`text-xl font-extrabold ${item.color} flex items-center gap-1.5 pt-1.5`}>
@@ -237,7 +380,10 @@ export function AdminDashboard() {
             </div>
             <div className="space-y-3">
               {recentLogs.length === 0 ? (
-                <p className="text-center py-6 text-xs text-gray-400">Không có nhật ký hoạt động</p>
+                <div className="flex flex-col items-center justify-center py-8 gap-2 text-[var(--text-muted)]">
+                  <Clock className="w-8 h-8 opacity-30" />
+                  <p className="text-xs font-medium">Không có nhật ký hoạt động</p>
+                </div>
               ) : recentLogs.map(log => (
                 <div key={log.id} className="flex items-start gap-3 p-2.5 rounded-[var(--radius-sm)] hover:bg-[var(--card-bg)] transition-smooth">
                   <div className={`w-2.5 h-2.5 rounded-full mt-1.5 flex-shrink-0 ${log.status === "success" ? "bg-green-500" : log.status === "error" ? "bg-red-500" : "bg-yellow-500"}`} />
@@ -245,6 +391,9 @@ export function AdminDashboard() {
                     <p className="text-sm font-bold text-[var(--text-dark)] truncate">{log.action}</p>
                     <p className="text-xs text-[var(--text-muted)] truncate">{log.user} · {log.timestamp.slice(11, 16)}</p>
                   </div>
+                  <Badge className={`text-xs rounded-full px-2 py-0.5 font-semibold shrink-0 ${log.status === "success" ? "bg-green-100 text-green-700" : log.status === "error" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"}`}>
+                    {log.status === "success" ? "OK" : log.status === "error" ? "Lỗi" : "Cảnh báo"}
+                  </Badge>
                 </div>
               ))}
             </div>
@@ -252,38 +401,71 @@ export function AdminDashboard() {
         </Card>
       </div>
 
-      {/* Modal dọn dẹp hệ thống */}
-      <Modal
-        isOpen={cleanupOpen}
-        onClose={() => setCleanupOpen(false)}
-        title="Dọn dẹp tài khoản ảo đăng ký spam"
-        size="sm"
-      >
+      {/* Top Families */}
+      {(reportsStats?.topFamilies || []).length > 0 && (
+        <Card className="border-none shadow-[var(--shadow-card)] rounded-[var(--radius)] bg-white">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+              <div>
+                <h3 className="text-lg font-black text-[var(--text-dark)]">🏆 Top gia đình hoạt động tích cực</h3>
+                <p className="text-xs text-[var(--text-muted)] mt-0.5">Xếp hạng theo tổng chi tiêu đi chợ</p>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => navigate('/admin/reports')}
+                className="text-[var(--purple-deep)] font-semibold text-xs hover:bg-[var(--card-bg)] rounded-[8px]">
+                Chi tiết <ArrowRight className="w-3.5 h-3.5 ml-1" />
+              </Button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm text-[var(--text-muted)]">
+                <thead className="text-xs text-[var(--text-dark)] uppercase bg-[var(--card-bg)] font-bold border-b border-[var(--border-light)]">
+                  <tr>
+                    <th className="px-4 py-3">Hạng</th>
+                    <th className="px-4 py-3">Nhóm gia đình</th>
+                    <th className="px-4 py-3 text-center">Thành viên</th>
+                    <th className="px-4 py-3 text-center">Phiên hoàn thành</th>
+                    <th className="px-4 py-3 text-right">Tổng chi tiêu</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--border-light)]">
+                  {(reportsStats.topFamilies || []).map((fam: any, index: number) => (
+                    <tr key={index} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="px-4 py-3 font-black text-[var(--purple-deep)]">#{index + 1}</td>
+                      <td className="px-4 py-3 font-bold text-[var(--text-dark)]">{fam.name}</td>
+                      <td className="px-4 py-3 text-center">
+                        <span className="px-2.5 py-1 bg-purple-50 text-[var(--purple-deep)] font-semibold text-xs rounded-full border border-purple-100">
+                          {fam.memberCount} tv
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-center font-bold text-slate-700">{fam.completedLists}</td>
+                      <td className="px-4 py-3 text-right font-black text-[var(--purple-deep)]">
+                        {Number(fam.totalSpend || 0).toLocaleString()} ₫
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Modal dọn dẹp */}
+      <Modal isOpen={cleanupOpen} onClose={() => setCleanupOpen(false)} title="Dọn dẹp tài khoản ảo đăng ký spam" size="sm">
         <div className="space-y-4 p-1">
           <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-xl text-red-900 text-sm">
             <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
             <div>
               <p className="font-bold">Đồng ý quét và dọn dẹp?</p>
               <p className="text-xs text-red-700 mt-0.5">
-                Hệ thống sẽ thực hiện dọn dẹp hàng loạt các tài khoản được đăng ký trong 24 giờ qua mà chưa gia nhập bất kỳ nhóm gia đình nào và không có hoạt động.
+                Hệ thống sẽ thực hiện xóa mềm các tài khoản đăng ký trong 24 giờ qua chưa gia nhập bất kỳ nhóm gia đình nào và không có hoạt động.
               </p>
             </div>
           </div>
-
           <div className="flex gap-2.5 pt-2">
-            <Button
-              variant="outline"
-              disabled={cleaning}
-              onClick={() => setCleanupOpen(false)}
-              className="flex-1 rounded-lg"
-            >
+            <Button variant="outline" disabled={cleaning} onClick={() => setCleanupOpen(false)} className="flex-1 rounded-lg">
               Hủy
             </Button>
-            <Button
-              onClick={handleCleanup}
-              disabled={cleaning}
-              className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg shadow-sm"
-            >
+            <Button onClick={handleCleanup} disabled={cleaning} className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg shadow-sm">
               {cleaning ? "Đang xử lý..." : "Quét & Dọn dẹp"}
             </Button>
           </div>
