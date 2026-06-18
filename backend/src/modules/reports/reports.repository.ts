@@ -33,30 +33,36 @@ export class ReportsRepository {
       trendDateFilter = ` AND ds.NgayTao >= DATEADD(day, -29, CAST(DATEADD(minute, -@tz, GETDATE()) AS DATE))`;
     }
 
-    // 1. Query Tổng quan (Tổng chi phí thực tế của các món đã mua, tổng lãng phí ước tính từ thực phẩm hết hạn, số báo cáo đã hoàn thành)
+    // 1. Query Tổng quan
+    // GiaDuKien / GiaThucTe là TỔNG GIÁ của cả dòng (không phải đơn giá), không nhân thêm SoLuong.
+    // TongLangPhi và TongTietKiem dùng đơn giá = GiaThucTe / SoLuong của lần mua gần nhất.
     const summaryQuery = `
-      SELECT 
-        CAST(ISNULL(SUM(CASE WHEN ct.DaMua = 1 THEN CAST(ct.GiaThucTe * ct.SoLuong AS DECIMAL(12,2)) ELSE 0 END), 0) AS DECIMAL(12,2)) AS TongChiPhi,
+      SELECT
+        CAST(ISNULL(SUM(CASE WHEN ct.DaMua = 1 THEN CAST(ct.GiaThucTe AS DECIMAL(12,2)) ELSE 0 END), 0) AS DECIMAL(12,2)) AS TongChiPhi,
         CAST(ISNULL((
-          SELECT SUM(kp.SoLuong * ISNULL(lastPrice.GiaThucTe, 15000))
+          SELECT SUM(kp.SoLuong * ISNULL(lastPrice.DonGia, 15000))
           FROM KhoThucPham kp
           OUTER APPLY (
-            SELECT TOP 1 sub.GiaThucTe
+            SELECT TOP 1
+              CASE WHEN sub.SoLuong > 0 THEN sub.GiaThucTe / sub.SoLuong ELSE 15000 END AS DonGia
             FROM ChiTietMuaSam sub
             INNER JOIN DanhSachMuaSam subDs ON sub.MaDanhSach = subDs.MaDanhSach
-            WHERE subDs.MaNhom = @g AND sub.TenThucPham = kp.TenTP AND sub.DaMua = 1
+            WHERE subDs.MaNhom = @g AND sub.TenThucPham = kp.TenTP
+              AND sub.DaMua = 1 AND sub.GiaThucTe > 0
             ORDER BY subDs.NgayTao DESC
           ) AS lastPrice
           WHERE kp.MaNhom = @g AND kp.TrangThai = 'HET_HAN'
         ), 0) AS DECIMAL(12,2)) AS TongLangPhi,
         CAST(ISNULL((
-          SELECT SUM((nk.SoLuongTruoc - nk.SoLuongSau) * ISNULL(lastPrice2.GiaThucTe, 15000))
+          SELECT SUM((nk.SoLuongTruoc - nk.SoLuongSau) * ISNULL(lastPrice2.DonGia, 15000))
           FROM NhatKyKho nk
           OUTER APPLY (
-            SELECT TOP 1 sub.GiaThucTe
+            SELECT TOP 1
+              CASE WHEN sub.SoLuong > 0 THEN sub.GiaThucTe / sub.SoLuong ELSE 15000 END AS DonGia
             FROM ChiTietMuaSam sub
             INNER JOIN DanhSachMuaSam subDs ON sub.MaDanhSach = subDs.MaDanhSach
-            WHERE subDs.MaNhom = @g AND sub.TenThucPham = nk.TenTP AND sub.DaMua = 1
+            WHERE subDs.MaNhom = @g AND sub.TenThucPham = nk.TenTP
+              AND sub.DaMua = 1 AND sub.GiaThucTe > 0
             ORDER BY subDs.NgayTao DESC
           ) AS lastPrice2
           WHERE nk.MaNhom = @g AND nk.HanhDong = 'TIEU_THU'
@@ -72,7 +78,7 @@ export class ReportsRepository {
     const trendQuery = `
       SELECT
         FORMAT(ds.NgayTao, 'dd/MM') AS label,
-        CAST(ISNULL(SUM(CASE WHEN ct.DaMua = 1 THEN CAST(ct.GiaThucTe * ct.SoLuong AS DECIMAL(12,2)) ELSE 0 END), 0) AS DECIMAL(12,2)) AS value
+        CAST(ISNULL(SUM(CASE WHEN ct.DaMua = 1 THEN CAST(ct.GiaThucTe AS DECIMAL(12,2)) ELSE 0 END), 0) AS DECIMAL(12,2)) AS value
       FROM DanhSachMuaSam ds
       LEFT JOIN ChiTietMuaSam ct ON ds.MaDanhSach = ct.MaDanhSach
       WHERE ds.MaNhom = @g ${trendDateFilter}
@@ -84,7 +90,7 @@ export class ReportsRepository {
     const categoryQuery = `
       SELECT
         ISNULL(NULLIF(ct.DanhMucHang, ''), N'Khác') AS name,
-        CAST(ISNULL(SUM(CASE WHEN ct.DaMua = 1 THEN CAST(ct.GiaThucTe * ct.SoLuong AS DECIMAL(12,2)) ELSE 0 END), 0) AS DECIMAL(12,2)) AS value
+        CAST(ISNULL(SUM(CASE WHEN ct.DaMua = 1 THEN CAST(ct.GiaThucTe AS DECIMAL(12,2)) ELSE 0 END), 0) AS DECIMAL(12,2)) AS value
       FROM DanhSachMuaSam ds
       INNER JOIN ChiTietMuaSam ct ON ds.MaDanhSach = ct.MaDanhSach
       WHERE ds.MaNhom = @g AND ct.DaMua = 1 ${dateFilter}

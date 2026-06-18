@@ -3,16 +3,19 @@ import { Link, useNavigate } from "react-router";
 import { Button } from "../../../../components/ui/button";
 import { Input } from "../../../../components/ui/input";
 import { Label } from "../../../../components/ui/label";
-import { Shield, Loader2 } from "lucide-react";
+import { Shield, Loader2, Eye, EyeOff } from "lucide-react";
 import { toast } from "../../../../components/common/Toast";
+import { useAdmin } from "../../../../context/AdminContext";
 
 export function AdminLogin() {
   const [isLoading, setIsLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
+  const { loginAdmin } = useAdmin();
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
       toast.error("Vui lòng điền đầy đủ email và mật khẩu.");
@@ -20,13 +23,24 @@ export function AdminLogin() {
     }
 
     setIsLoading(true);
-    
-    // Giả lập thời gian kết nối API
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
+      // ✅ Gọi API thực — không còn setTimeout giả lập
+      await loginAdmin(email, password);
       toast.success("Xác thực quản trị viên thành công!");
       navigate("/admin/dashboard");
-    }, 1500);
+    } catch (err: any) {
+      // Phân biệt lỗi "không phải admin" với lỗi "sai mật khẩu"
+      const msg: string = err.message || "Đăng nhập thất bại";
+      if (msg.includes("không có quyền") || msg.includes("Admin Panel")) {
+        toast.error("⛔ " + msg);
+      } else if (msg.includes("bị khóa") || msg.includes("khóa")) {
+        toast.error("🔒 Tài khoản này đã bị khóa. Liên hệ hỗ trợ kỹ thuật.");
+      } else {
+        toast.error("Đăng nhập thất bại: " + msg);
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -41,7 +55,7 @@ export function AdminLogin() {
           <div className="inline-flex items-center justify-center w-20 h-20 bg-white/10 backdrop-blur-md rounded-[20px] mb-6 border border-white/20 shadow-2xl">
             <Shield className="w-10 h-10 text-white" strokeWidth={2} />
           </div>
-          <h1 className="text-4xl font-black text-white mb-3" style={{ fontFamily: 'var(--font-heading)' }}>
+          <h1 className="text-4xl font-black text-white mb-3" style={{ fontFamily: "var(--font-heading)" }}>
             Admin Panel
           </h1>
           <p className="text-white/80 font-medium text-lg">Chào mừng trở lại, Hệ quản trị cao cấp</p>
@@ -50,35 +64,46 @@ export function AdminLogin() {
         <div className="bg-white/10 backdrop-blur-xl rounded-[24px] p-8 border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.2)]">
           <form className="space-y-6" onSubmit={handleLogin}>
             <div className="space-y-2">
-              <Label htmlFor="admin-email" className="text-white font-semibold">Email quản trị</Label>
-              <Input 
-                id="admin-email" 
-                type="email" 
+              <Label htmlFor="admin-email" className="text-white font-semibold">
+                Email quản trị
+              </Label>
+              <Input
+                id="admin-email"
+                type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@hfc.com" 
-                className="h-12 rounded-[14px] bg-white/10 border-white/20 text-white placeholder:text-white/40 focus-visible:ring-white/50 focus-visible:border-white/50 transition-smooth" 
+                placeholder="admin@shoppingapp.com"
+                autoComplete="email"
+                className="h-12 rounded-[14px] bg-white/10 border-white/20 text-white placeholder:text-white/40 focus-visible:ring-white/50 focus-visible:border-white/50 transition-smooth"
               />
             </div>
 
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                 <Label htmlFor="admin-password" className="text-white font-semibold">Mật khẩu</Label>
-                 <span className="text-sm font-medium text-white/70 cursor-pointer hover:text-white transition-colors">
-                    Trợ giúp?
-                 </span>
+              <Label htmlFor="admin-password" className="text-white font-semibold">
+                Mật khẩu
+              </Label>
+              <div className="relative">
+                <Input
+                  id="admin-password"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                  className="h-12 rounded-[14px] bg-white/10 border-white/20 text-white placeholder:text-white/40 focus-visible:ring-white/50 focus-visible:border-white/50 transition-smooth pr-12"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-white/50 hover:text-white transition-colors"
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
               </div>
-              <Input 
-                id="admin-password" 
-                type="password" 
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••" 
-                className="h-12 rounded-[14px] bg-white/10 border-white/20 text-white placeholder:text-white/40 focus-visible:ring-white/50 focus-visible:border-white/50 transition-smooth" 
-              />
             </div>
 
-            <Button 
+            <Button
               type="submit"
               disabled={isLoading}
               className="w-full h-12 bg-white text-[var(--purple-deep)] hover:bg-gray-100 rounded-[14px] text-base font-bold shadow-lg shadow-black/10 hover-lift mt-4 transition-smooth"
@@ -93,10 +118,19 @@ export function AdminLogin() {
               )}
             </Button>
           </form>
+
+          {/* Security notice */}
+          <div className="mt-5 p-3 bg-white/5 rounded-[12px] border border-white/10">
+            <p className="text-white/50 text-xs text-center">
+              🔐 Chỉ tài khoản có vai trò <strong className="text-white/70">ADMIN</strong> mới được truy cập hệ thống quản trị này.
+            </p>
+          </div>
         </div>
 
         <p className="text-center text-white/70 font-medium text-sm mt-8">
-          <Link to="/" className="hover:text-white hover:underline transition-colors">&larr; Trở về trang người dùng</Link>
+          <Link to="/" className="hover:text-white hover:underline transition-colors">
+            &larr; Trở về trang người dùng
+          </Link>
         </p>
       </div>
     </div>

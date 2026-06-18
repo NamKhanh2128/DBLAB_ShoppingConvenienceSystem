@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { inventoryApi, shoppingApi, mealPlanApi, recipesApi, reportsApi, adminApi } from '../services/api';
 
@@ -285,11 +285,14 @@ export function useReports() {
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [filters, setFilters] = useState<{ startDate?: string; endDate?: string }>({});
+  // Store filters in a ref so `load` doesn't need to be recreated on every filter change,
+  // preventing the double-fetch caused by useEffect([load]) re-firing after setFilters.
+  const filtersRef = useRef<{ startDate?: string; endDate?: string }>({});
 
   const load = useCallback(async (customFilters?: { startDate?: string; endDate?: string }) => {
     if (!groupId) return;
     setLoading(true);
-    const activeFilters = customFilters || filters;
+    const activeFilters = customFilters ?? filtersRef.current;
     try {
       const tzOffset = new Date().getTimezoneOffset();
       const [repRes, sumRes] = await Promise.all([
@@ -303,13 +306,14 @@ export function useReports() {
     } finally {
       setLoading(false);
     }
-  }, [groupId, filters]);
+  }, [groupId]);
 
   useEffect(() => {
     load();
-  }, [groupId, load]);
+  }, [load]);
 
   const applyFilters = async (newFilters: { startDate?: string; endDate?: string }) => {
+    filtersRef.current = newFilters;
     setFilters(newFilters);
     await load(newFilters);
   };
@@ -341,7 +345,7 @@ export function useDashboardStats() {
         inventoryApi.getAll(groupId),
         inventoryApi.getExpiring(groupId),
         shoppingApi.getLists(groupId),
-        reportsApi.getSummary(groupId),
+        reportsApi.getSummary(groupId, new Date().getTimezoneOffset()),
       ]);
       const allLists = lists.data || [];
       const totalItems = allLists.reduce((s: number, l: any) => s + (l.TongMon || 0), 0);

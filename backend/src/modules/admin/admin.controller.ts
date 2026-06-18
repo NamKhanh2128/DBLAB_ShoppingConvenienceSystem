@@ -83,4 +83,12 @@ export class AdminController {
       return createSuccess(res, result, `Đã dọn dẹp xong ${result.cleanedCount} tài khoản ảo.`);
     } catch (e) { next(e); }
   }
+
+  async getReports(req: Request, res: Response, next: NextFunction) {
+    try {
+      const actor = await this.getActor(req);
+      const data = await svc.getReports(actor);
+      return createSuccess(res, data);
+    } catch (e) { next(e); }
+  }
 }

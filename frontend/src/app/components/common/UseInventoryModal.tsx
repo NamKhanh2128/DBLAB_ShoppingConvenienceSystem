@@ -22,22 +22,27 @@ export function UseInventoryModal({
   const [quantity, setQuantity] = useState(1);
   const [notes, setNotes] = useState("");
 
-  const maxQuantity = item?.quantity || 10;
+  // Dùng ?? thay vì || để tránh bug khi quantity = 0 bị coi là falsy
+  const maxQuantity = item?.quantity ?? 0;
+  const isOutOfStock = maxQuantity <= 0;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit({ quantity, notes });
+    if (isOutOfStock) return;
+    // Đảm bảo không sử dụng nhiều hơn số lượng hiện có
+    const safeQty = Math.min(Math.max(quantity, 0), maxQuantity);
+    onSubmit({ quantity: safeQty, notes });
     setQuantity(1);
     setNotes("");
     onClose();
   };
 
   const increment = () => {
-    if (quantity < maxQuantity) setQuantity(quantity + 1);
+    if (quantity < maxQuantity) setQuantity(prev => Math.min(prev + 1, maxQuantity));
   };
 
   const decrement = () => {
-    if (quantity > 1) setQuantity(quantity - 1);
+    if (quantity > 1) setQuantity(prev => Math.max(prev - 1, 1));
   };
 
   return (
@@ -52,9 +57,15 @@ export function UseInventoryModal({
             <p className="text-3xl font-black text-[var(--text-dark)]">
               {maxQuantity} <span className="text-lg font-semibold text-[var(--text-muted)]">{item?.unit || "hộp"}</span>
             </p>
+            {isOutOfStock && (
+              <p className="text-sm font-bold text-red-500 mt-2">
+                ⚠️ Thực phẩm này đã hết, không thể sử dụng.
+              </p>
+            )}
           </div>
 
-          {/* Quantity Selector */}
+          {/* Quantity Selector — Ẩn khi đã hết hàng */}
+          {!isOutOfStock && (
           <div>
             <Label className="text-[var(--text-dark)] font-semibold mb-3 block text-center">
               Số lượng sử dụng
@@ -76,13 +87,16 @@ export function UseInventoryModal({
                   type="number"
                   value={quantity}
                   onChange={(e) => {
-                    const val = parseInt(e.target.value) || 1;
-                    if (val >= 1 && val <= maxQuantity) {
+                    const val = parseFloat(e.target.value);
+                    if (!isNaN(val) && val > 0 && val <= maxQuantity) {
                       setQuantity(val);
+                    } else if (e.target.value === '' || e.target.value === '0') {
+                      setQuantity(1);
                     }
                   }}
                   min={1}
                   max={maxQuantity}
+                  step="any"
                   className="w-24 h-16 text-center text-3xl font-black rounded-[var(--radius-sm)] border-2 border-[var(--border-light)] focus-visible:ring-[var(--gold)] focus-visible:border-[var(--gold)]"
                 />
               </div>
@@ -99,9 +113,10 @@ export function UseInventoryModal({
               </Button>
             </div>
             <p className="text-center text-xs text-[var(--text-muted)] mt-2">
-              Còn lại sau khi sử dụng: {maxQuantity - quantity} {item?.unit || "hộp"}
+              Còn lại sau khi sử dụng: {Math.max(0, maxQuantity - quantity)} {item?.unit || "hộp"}
             </p>
           </div>
+          )}
 
           {/* Notes */}
           <div>
@@ -129,7 +144,8 @@ export function UseInventoryModal({
             </Button>
             <Button
               type="submit"
-              className="flex-1 bg-gradient-gold text-[var(--text-dark)] font-semibold rounded-[var(--radius-btn)] shadow-lg hover:shadow-xl transition-smooth"
+              disabled={isOutOfStock}
+              className="flex-1 bg-gradient-gold text-[var(--text-dark)] font-semibold rounded-[var(--radius-btn)] shadow-lg hover:shadow-xl transition-smooth disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Xác nhận sử dụng
             </Button>

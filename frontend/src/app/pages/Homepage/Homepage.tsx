@@ -196,8 +196,8 @@ export function Homepage() {
             <div className="animate-slide-up">
               {/* Badge */}
               <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(249,231,159,0.18)", border: "1px solid rgba(249,231,159,0.40)", borderRadius: 99, padding: "7px 16px", marginBottom: 24 }}>
-                <Star className="w-4 h-4" style={{ color: "#F9E79F" }} fill="#F9E79F" />
-                <span style={{ fontSize: 13, fontWeight: 600, color: "#FEF3C7" }}>Được hơn 10,000 gia đình tin dùng</span>
+                <Sparkles className="w-4 h-4" style={{ color: "#F9E79F" }} />
+                <span style={{ fontSize: 13, fontWeight: 600, color: "#FEF3C7" }}>Giải pháp đi chợ & quản lý tủ lạnh tối ưu</span>
               </div>
 
               <h1
@@ -323,11 +323,11 @@ export function Homepage() {
                 }}
               >
                 <div style={{ width: 44, height: 44, borderRadius: 12, background: "linear-gradient(135deg,#10B981,#34D399)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 12px rgba(16,185,129,0.35)" }}>
-                  <TrendingUp className="w-5 h-5" style={{ color: "#fff" }} strokeWidth={2.5} />
+                  <Clock className="w-5 h-5" style={{ color: "#fff" }} strokeWidth={2.5} />
                 </div>
                 <div>
-                  <p style={{ fontSize: 22, fontWeight: 900, color: "#2C2C2C", lineHeight: 1 }}>30%</p>
-                  <p style={{ fontSize: 12, color: "#6B7280", fontWeight: 500 }}>Chi phí tiết kiệm</p>
+                  <p style={{ fontSize: 15, fontWeight: 900, color: "#2C2C2C", lineHeight: 1.2 }}>Lên lịch ăn</p>
+                  <p style={{ fontSize: 11, color: "#6B7280", fontWeight: 500 }}>Nhanh chóng & dễ dàng</p>
                 </div>
               </div>
 
@@ -352,8 +352,8 @@ export function Homepage() {
                   <Users className="w-5 h-5" style={{ color: "#2C2C2C" }} strokeWidth={2.5} />
                 </div>
                 <div>
-                  <p style={{ fontSize: 22, fontWeight: 900, color: "#2C2C2C", lineHeight: 1 }}>10K+</p>
-                  <p style={{ fontSize: 12, color: "#6B7280", fontWeight: 500 }}>Gia đình tin dùng</p>
+                  <p style={{ fontSize: 15, fontWeight: 900, color: "#2C2C2C", lineHeight: 1.2 }}>Đồng bộ</p>
+                  <p style={{ fontSize: 11, color: "#6B7280", fontWeight: 500 }}>Thành viên gia đình</p>
                 </div>
               </div>
             </div>
@@ -367,10 +367,10 @@ export function Homepage() {
       <section style={{ padding: "48px 24px", background: "#FFFFFF", borderBottom: "1px solid #EDE9FE" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 0 }}>
           {[
-            { value: "10K+", label: "Gia đình", sub: "trên toàn quốc", icon: Users },
-            { value: "50K+", label: "Công thức", sub: "phong phú đa dạng", icon: ChefHat },
-            { value: "1M+", label: "Danh sách", sub: "đã hoàn thành", icon: ShoppingCart },
-            { value: "30%", label: "Tiết kiệm", sub: "chi phí thực phẩm", icon: TrendingUp },
+            { value: "Tự động", label: "Lập danh sách", sub: "từ thực đơn tuần", icon: ShoppingCart },
+            { value: "Trực quan", label: "Quản lý tủ lạnh", sub: "phát hiện hạn dùng", icon: Package },
+            { value: "Dinh dưỡng", label: "Gợi ý bữa ăn", sub: "công thức chi tiết", icon: ChefHat },
+            { value: "Kết nối", label: "Đồng bộ gia đình", sub: "mọi lúc mọi nơi", icon: Users },
           ].map((stat, i) => {
             const Icon = stat.icon;
             return (
@@ -537,8 +537,8 @@ export function Homepage() {
             </div>
             {/* Overlay badge */}
             <div style={{ position: "absolute", bottom: 20, right: -16, background: "linear-gradient(135deg,#A569BD,#A569BD)", borderRadius: 16, padding: "14px 20px", boxShadow: "0 8px 28px rgba(165,105,189,0.40)", color: "#fff" }}>
-              <p style={{ fontSize: 26, fontWeight: 900, lineHeight: 1 }}>80%</p>
-              <p style={{ fontSize: 12, opacity: 0.80 }}>Giảm lãng phí</p>
+              <p style={{ fontSize: 20, fontWeight: 900, lineHeight: 1.2 }}>Thông minh</p>
+              <p style={{ fontSize: 12, opacity: 0.80 }}>Tránh lãng phí</p>
             </div>
           </div>
 

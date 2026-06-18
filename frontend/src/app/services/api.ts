@@ -1,5 +1,4 @@
-// Base API configuration
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
+export const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
 
 // Token helpers (Lưu trữ Access Token trong localStorage ở localhost để việc tải lại trang không bị out nick)
 let memoryToken: string | null = null;
@@ -61,7 +60,7 @@ async function request<T>(
     ...((options.headers as Record<string, string>) || {}),
   };
 
-  let res = await fetch(`${BASE_URL}${endpoint}`, { ...options, headers });
+  let res = await fetch(`${BASE_URL}${endpoint}`, { ...options, headers, credentials: 'include' });
   
   // Tự động làm mới token ngầm (Silent Refresh) nếu bị lỗi 401 Unauthorized
   if (res.status === 401 && endpoint !== '/auth/login' && endpoint !== '/auth/refresh') {
@@ -74,7 +73,8 @@ async function request<T>(
       } else {
         onRefreshed(null);
         localStorage.removeItem('groupId');
-        window.location.href = '/auth/login?expired=true';
+        const isAdminPath = window.location.pathname.startsWith('/admin');
+        window.location.href = isAdminPath ? '/admin/login?expired=true' : '/auth/login?expired=true';
         throw new Error('Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại.');
       }
     }
@@ -94,7 +94,7 @@ async function request<T>(
       ...((options.headers as Record<string, string>) || {}),
     };
     
-    res = await fetch(`${BASE_URL}${endpoint}`, { ...options, headers: retryHeaders });
+    res = await fetch(`${BASE_URL}${endpoint}`, { ...options, headers: retryHeaders, credentials: 'include' });
   }
 
   const data = await res.json();
@@ -172,6 +172,7 @@ export const usersApi = {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: formData,
+      credentials: 'include'
     }).then(async res => {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Lỗi tải ảnh');
@@ -456,6 +457,9 @@ export const reportsApi = {
 export const adminApi = {
   getDashboard: () =>
     request<{ success: boolean; data: any }>('/admin/dashboard'),
+
+  getReports: () =>
+    request<{ success: boolean; data: any }>('/admin/reports'),
 
   getUsers: () =>
     request<{ success: boolean; data: any[] }>('/admin/users'),

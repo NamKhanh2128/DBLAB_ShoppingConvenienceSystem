@@ -195,6 +195,13 @@ export function FilterModal({
                 <div key={status.id} className="flex items-center gap-3">
                   <Checkbox
                     id={status.id}
+                    checked={filters.expiryStatus.includes(status.id)}
+                    onCheckedChange={(checked) => {
+                      const updated = checked
+                        ? [...filters.expiryStatus, status.id]
+                        : filters.expiryStatus.filter(id => id !== status.id);
+                      setFilters({ ...filters, expiryStatus: updated });
+                    }}
                     className="border-[var(--border-light)] data-[state=checked]:bg-[var(--purple-primary)]"
                   />
                   <label

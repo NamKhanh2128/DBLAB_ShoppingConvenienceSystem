@@ -1,8 +1,10 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
-import { adminApi } from "../services/api";
+import { adminApi, authApi, setToken, removeToken, removeUser } from "../services/api";
 
-export type UserStatus = "active" | "inactive" | "banned";
-export type UserRole = "admin" | "moderator" | "user";
+// ─── Type Definitions ─────────────────────────────────────────────────────────
+
+export type UserStatus = "active" | "locked" | "deleted";
+export type UserRole = "admin" | "member";
 
 export interface AdminUser {
   id: string;
@@ -16,6 +18,7 @@ export interface AdminUser {
   avatar: string;
   joinDate: string;
   lastLogin: string;
+  has2FA?: boolean;
   adminNote?: string;
 }
 
@@ -30,73 +33,176 @@ export interface AuditLog {
   timestamp: string;
 }
 
+// Thông tin admin đang đăng nhập (tách biệt với danh sách users)
+export interface AdminSession {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+}
+
+// ─── Context Type ─────────────────────────────────────────────────────────────
+
 interface AdminContextType {
+  // Admin auth state
+  adminUser: AdminSession | null;
+  isAdminAuthenticated: boolean;
+  loginAdmin: (email: string, password: string) => Promise<void>;
+  logoutAdmin: () => Promise<void>;
+
+  // Data
   users: AdminUser[];
   setUsers: (u: AdminUser[]) => void;
   auditLogs: AuditLog[];
   addLog: (log: Omit<AuditLog, "id" | "timestamp">) => void;
   dashStats: any;
+  reportsStats: any;
   loading: boolean;
   reload: () => Promise<void>;
   cleanupFakeUsers: () => Promise<number>;
 }
 
+// ─── Local Storage Key ────────────────────────────────────────────────────────
+
+const ADMIN_SESSION_KEY = "admin_session";
+
+const getAdminSession = (): AdminSession | null => {
+  try {
+    const s = localStorage.getItem(ADMIN_SESSION_KEY);
+    return s ? JSON.parse(s) : null;
+  } catch {
+    return null;
+  }
+};
+
+const setAdminSession = (session: AdminSession) => {
+  localStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(session));
+};
+
+const removeAdminSession = () => {
+  localStorage.removeItem(ADMIN_SESSION_KEY);
+};
+
+// ─── Context ──────────────────────────────────────────────────────────────────
+
 const AdminContext = createContext<AdminContextType | null>(null);
 
 export function AdminProvider({ children }: { children: ReactNode }) {
+  const [adminUser, setAdminUser] = useState<AdminSession | null>(getAdminSession());
   const [users, setUsersState] = useState<AdminUser[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [dashStats, setDashStats] = useState<any>(null);
+  const [reportsStats, setReportsStats] = useState<any>(null);
   const [loading, setLoading] = useState(false);
 
+  const isAdminAuthenticated = adminUser !== null;
+
+  // ── Login Admin ─────────────────────────────────────────────────────────────
+
+  const loginAdmin = async (email: string, password: string) => {
+    const res = await authApi.login(email, password);
+    const { user, token } = res.data;
+
+    // Kiểm tra role phải là ADMIN
+    if (!user || user.VaiTro !== "ADMIN") {
+      throw new Error("Tài khoản này không có quyền truy cập Admin Panel. Vui lòng sử dụng tài khoản quản trị viên.");
+    }
+
+    // Lưu access token vào memory
+    setToken(token);
+
+    // Lưu thông tin admin session vào localStorage để F5 không mất đăng nhập
+    const session: AdminSession = {
+      id: user.MaNguoiDung,
+      name: user.HoTen,
+      email: user.Email,
+      role: user.VaiTro,
+    };
+    setAdminSession(session);
+    setAdminUser(session);
+  };
+
+  // ── Logout Admin ─────────────────────────────────────────────────────────────
+
+  const logoutAdmin = async () => {
+    try {
+      // Gọi API logout để server xóa cookie refreshToken
+      await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:5000/api/v1"}/auth/logout`, {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch {
+      // Bỏ qua lỗi network, vẫn xóa local state
+    }
+    removeToken();
+    removeUser();
+    removeAdminSession();
+    setAdminUser(null);
+    setUsersState([]);
+    setDashStats(null);
+    setReportsStats(null);
+    setAuditLogs([]);
+  };
+
+  // ── Load Admin Data ───────────────────────────────────────────────────────────
+
   const loadData = useCallback(async () => {
+    if (!isAdminAuthenticated) return;
     setLoading(true);
     try {
-      const [usersRes, statsRes, logsRes] = await Promise.all([
+      const [usersRes, statsRes, logsRes, reportsRes] = await Promise.all([
         adminApi.getUsers(),
         adminApi.getDashboard(),
-        adminApi.getAuditLogs()
+        adminApi.getAuditLogs(),
+        adminApi.getReports(),
       ]);
 
       const mappedUsers = (usersRes.data || []).map((u: any) => ({
         id: String(u.MaNguoiDung),
         name: u.HoTen,
         email: u.Email,
-        phone: u.DienThoai || '-',
-        address: u.DiaChi || '-',
+        // ✅ SỬA: Dùng đúng tên cột DB là SoDienThoai (không phải DienThoai)
+        phone: u.SoDienThoai || "-",
+        // ✅ SỬA: Không có DiaChi trong DB, dùng Bio thay thế
+        address: u.Bio || "-",
+        // ✅ SỬA: DB lưu 'ADMIN'/'MEMBER', convert sang lowercase để khớp với UserRole type
         role: String(u.VaiTro).toLowerCase() as UserRole,
+        // ✅ SỬA: DB lưu 'ACTIVE'/'LOCKED'/'DELETED', convert sang lowercase
         status: String(u.TrangThai).toLowerCase() as UserStatus,
         groups: u.SoNhom || 0,
         avatar: u.HoTen.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2),
-        joinDate: String(u.NgayTao || '').slice(0, 10),
-        lastLogin: '-',
+        joinDate: String(u.NgayTao || "").slice(0, 10),
+        lastLogin: "-",
+        has2FA: !!u.IsTwoFactorEnabled,
       }));
 
       setUsersState(mappedUsers);
       setDashStats(statsRes.data);
+      setReportsStats(reportsRes.data);
       setAuditLogs(logsRes.data || []);
     } catch (e) {
       console.error("Failed to load admin context data from API:", e);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isAdminAuthenticated]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    if (isAdminAuthenticated) {
+      loadData();
+    }
+  }, [isAdminAuthenticated, loadData]);
 
-  // Wrapper setUsers để tương thích với các lệnh sửa cục bộ trong UI cũ
+  // ── Helpers ──────────────────────────────────────────────────────────────────
+
   const setUsers = (newUsers: AdminUser[]) => {
     setUsersState(newUsers);
   };
 
   const addLog = async (log: Omit<AuditLog, "id" | "timestamp">) => {
-    // Audit logs được lưu trực tiếp ở Backend thông qua các thao tác tương tác API
-    // Tuy nhiên chúng ta vẫn giữ hàm này cho tương thích ngược
     const now = new Date();
     const ts = now.toISOString().replace("T", " ").slice(0, 19);
-    setAuditLogs(prev => [{ ...log, id: Date.now().toString(), timestamp: ts } as AuditLog, ...prev]);
+    setAuditLogs((prev) => [{ ...log, id: Date.now().toString(), timestamp: ts } as AuditLog, ...prev]);
   };
 
   const cleanupFakeUsers = async (): Promise<number> => {
@@ -111,16 +217,23 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AdminContext.Provider value={{ 
-      users, 
-      setUsers, 
-      auditLogs, 
-      addLog, 
-      dashStats, 
-      loading, 
-      reload: loadData,
-      cleanupFakeUsers
-    }}>
+    <AdminContext.Provider
+      value={{
+        adminUser,
+        isAdminAuthenticated,
+        loginAdmin,
+        logoutAdmin,
+        users,
+        setUsers,
+        auditLogs,
+        addLog,
+        dashStats,
+        reportsStats,
+        loading,
+        reload: loadData,
+        cleanupFakeUsers,
+      }}
+    >
       {children}
     </AdminContext.Provider>
   );

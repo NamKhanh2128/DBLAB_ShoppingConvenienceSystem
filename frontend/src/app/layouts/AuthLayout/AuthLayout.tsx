@@ -1,5 +1,6 @@
-import { Outlet } from "react-router";
+import { Outlet, Navigate } from "react-router";
 import { Sparkles, CheckCircle2, Calendar, Package, TrendingUp } from "lucide-react";
+import { useAuth } from "../../context/AuthContext";
 
 const features = [
   {
@@ -23,6 +24,23 @@ const features = [
 ];
 
 export function AuthLayout() {
+  const { isAuthenticated, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[var(--background)]">
+        <div className="flex flex-col items-center gap-4 animate-pulse">
+          <div className="w-12 h-12 border-4 border-[var(--purple-pale)] border-t-[var(--purple-primary)] rounded-full animate-spin"></div>
+          <p className="text-sm font-semibold text-[var(--purple-primary)]">Đang kiểm tra phiên đăng nhập...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isAuthenticated) {
+    return <Navigate to="/app/dashboard" replace />;
+  }
+
   return (
     <div className="min-h-screen flex">
       {/* Left side - Illustration */}

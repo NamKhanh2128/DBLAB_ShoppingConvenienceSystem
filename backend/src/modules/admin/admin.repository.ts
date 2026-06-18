@@ -48,7 +48,8 @@ export class AdminRepository {
       .input('limit', sql.Int, limit)
       .input('offset', sql.Int, offset)
       .query(`
-        SELECT u.MaNguoiDung, u.HoTen, u.Email, u.VaiTro, u.TrangThai, u.NgayTao, u.NgayCapNhat,
+        SELECT u.MaNguoiDung, u.HoTen, u.Email, u.SoDienThoai, u.Bio, u.VaiTro, u.TrangThai,
+               u.NgayTao, u.NgayCapNhat, u.IsTwoFactorEnabled,
           (SELECT COUNT(*) FROM ThanhVienNhom WHERE MaNguoiDung = u.MaNguoiDung) AS SoNhom
         FROM NguoiDung u
         WHERE u.TrangThai != 'DELETED'
@@ -147,12 +148,84 @@ export class AdminRepository {
       SET TrangThai = 'DELETED', NgayCapNhat = GETDATE()
       WHERE NgayTao >= DATEADD(day, -1, GETDATE())
         AND TrangThai != 'DELETED'
-        AND VaiTro = 'USER'
+        AND VaiTro = 'MEMBER'  -- Đúng giá trị DB: MEMBER (không phải USER)
         AND MaNguoiDung NOT IN (SELECT DISTINCT MaNguoiDung FROM ThanhVienNhom)
         AND MaNguoiDung NOT IN (SELECT DISTINCT NguoiPhuTrach FROM ChiTietMuaSam WHERE NguoiPhuTrach IS NOT NULL)
     `);
     
     _cachedStats = null;
     return result.rowsAffected[0] || 0;
+  }
+
+  // ── SYSTEM REPORTS ──────────────────────────────────────────────
+
+  async getReportsStats() {
+    const pool = await getPool();
+
+    // 1. KPIs Query
+    const kpisResult = await pool.request().query(`
+      SELECT
+        (SELECT COUNT(*) FROM NguoiDung WHERE TrangThai != 'DELETED') AS totalUsers,
+        (SELECT COUNT(*) FROM NhomGiaDinh) AS totalGroups,
+        CAST(ISNULL((SELECT SUM(TongChiPhi) FROM BaoCaoChiTieu WHERE TuanThang LIKE N'Tháng%'), 0) AS DECIMAL(12,2)) AS totalSystemSpend,
+        CAST(ISNULL((SELECT SUM(TongLangPhi) FROM BaoCaoChiTieu WHERE TuanThang LIKE N'Tháng%'), 0) AS DECIMAL(12,2)) AS totalSystemWaste
+    `);
+
+    // 2. Monthly Trend Query
+    const trendResult = await pool.request().query(`
+      SELECT 
+        TuanThang AS label,
+        CAST(SUM(TongChiPhi) AS DECIMAL(12,2)) AS spend,
+        CAST(SUM(TongLangPhi) AS DECIMAL(12,2)) AS waste
+      FROM BaoCaoChiTieu
+      WHERE TuanThang LIKE N'Tháng%'
+      GROUP BY TuanThang
+      ORDER BY MIN(NgayTao) ASC
+    `);
+
+    // 3. Category Spend Distribution Query
+    const categoryResult = await pool.request().query(`
+      SELECT
+        ISNULL(NULLIF(ct.DanhMucHang, ''), N'Khác') AS name,
+        CAST(ISNULL(SUM(CASE WHEN ct.DaMua = 1 THEN CAST(ct.GiaThucTe AS DECIMAL(12,2)) ELSE 0 END), 0) AS DECIMAL(12,2)) AS value
+      FROM DanhSachMuaSam ds
+      INNER JOIN ChiTietMuaSam ct ON ds.MaDanhSach = ct.MaDanhSach
+      WHERE ct.DaMua = 1
+      GROUP BY ISNULL(NULLIF(ct.DanhMucHang, ''), N'Khác')
+      ORDER BY value DESC
+    `);
+
+    // 4. Activity Query (last 7 days)
+    const activityResult = await pool.request().query(`
+      SELECT 
+        ds.NgayTao,
+        COUNT(CASE WHEN ds.TrangThai = 'DANG_TAO' THEN 1 END) AS countNew,
+        COUNT(CASE WHEN ds.TrangThai = 'COMPLETED' THEN 1 END) AS countCompleted
+      FROM DanhSachMuaSam ds
+      WHERE ds.NgayTao >= DATEADD(day, -6, CAST(GETDATE() AS DATE))
+      GROUP BY ds.NgayTao
+      ORDER BY ds.NgayTao ASC
+    `);
+
+    // 5. Top Active Families Leaderboard Query
+    const topFamiliesResult = await pool.request().query(`
+      SELECT TOP 5
+        n.TenNhom AS name,
+        (SELECT COUNT(*) FROM ThanhVienNhom WHERE MaNhom = n.MaNhom) AS memberCount,
+        CAST(ISNULL(SUM(bc.TongChiPhi), 0) AS DECIMAL(12,2)) AS totalSpend,
+        (SELECT COUNT(*) FROM DanhSachMuaSam WHERE MaNhom = n.MaNhom AND TrangThai = 'COMPLETED') AS completedLists
+      FROM NhomGiaDinh n
+      LEFT JOIN BaoCaoChiTieu bc ON n.MaNhom = bc.MaNhom AND bc.TuanThang LIKE N'Tháng%'
+      GROUP BY n.MaNhom, n.TenNhom
+      ORDER BY totalSpend DESC, completedLists DESC
+    `);
+
+    return {
+      kpis: kpisResult.recordset[0],
+      trend: trendResult.recordset,
+      categoryDistribution: categoryResult.recordset,
+      activity: activityResult.recordset,
+      topFamilies: topFamiliesResult.recordset
+    };
   }
 }

@@ -28,12 +28,16 @@ export class InventoryRepository {
   async getByGroup(groupId: number): Promise<KhoThucPhamRow[]> {
     const pool = await getPool();
     
-    // 1. Tự động đồng bộ hóa các vật phẩm quá hạn thành trạng thái 'HE_HAN'
+    // 1. Tự động đồng bộ hóa các vật phẩm quá hạn thành trạng thái 'HET_HAN'
+    //    CHỈ cập nhật trong phạm vi nhóm gia đình đang được truy vấn (tránh side-effect toàn bảng)
     await pool.request()
+      .input('gSync', sql.Int, groupId)
       .query(`
-        UPDATE KhoThucPham 
-        SET TrangThai = 'HE_HAN', NgayCapNhat = GETDATE()
-        WHERE HanSuDung < CAST(GETDATE() AS DATE) AND TrangThai = 'CON_HAN'
+        UPDATE KhoThucPham
+        SET TrangThai = 'HET_HAN', NgayCapNhat = GETDATE()
+        WHERE MaNhom = @gSync
+          AND HanSuDung < CAST(GETDATE() AS DATE)
+          AND TrangThai = 'CON_HAN'
       `);
 
     // 2. Lấy danh sách thực phẩm
@@ -112,16 +116,34 @@ export class InventoryRepository {
     try {
       await tx.begin();
 
+      // Xác định giá trị cập nhật: ưu tiên data mới, fallback về giá trị cũ
+      const newTenTP   = (data.tenTP   !== undefined && data.tenTP   !== null) ? data.tenTP   : existing.TenTP;
+      const newDonVi   = (data.donVi   !== undefined)                          ? data.donVi   : existing.DonVi;
+      const newViTri   = (data.viTri   !== undefined)                          ? data.viTri   : existing.ViTri;
+      const newTrangThai = data.trangThai || existing.TrangThai;
+      // hanSuDung: cho phép set về null khi truyền null rõ ràng
+      const newHanSuDung = (data.hanSuDung !== undefined) ? (data.hanSuDung || null) : existing.HanSuDung;
+
       // Cập nhật với kiểm tra chéo Version để tránh Dirty Write
       const result = await tx.request()
-        .input('id', sql.Int, id)
-        .input('sl', sql.Decimal(10,2), data.soLuong)
-        .input('tt', sql.NVarChar(30), data.trangThai || existing.TrangThai)
-        .input('vt', sql.NVarChar(100), data.viTri || null)
-        .input('v', sql.Int, data.version)
+        .input('id',  sql.Int,           id)
+        .input('sl',  sql.Decimal(10,2), data.soLuong)
+        .input('ten', sql.NVarChar(100), newTenTP)
+        .input('dv',  sql.NVarChar(50),  newDonVi  || null)
+        .input('hsd', sql.Date,          newHanSuDung || null)
+        .input('tt',  sql.NVarChar(30),  newTrangThai)
+        .input('vt',  sql.NVarChar(100), newViTri  || null)
+        .input('v',   sql.Int,           data.version)
         .query(`
           UPDATE KhoThucPham 
-          SET SoLuong = @sl, TrangThai = @tt, ViTri = @vt, Version = Version + 1, NgayCapNhat = GETDATE()
+          SET SoLuong     = @sl,
+              TenTP       = @ten,
+              DonVi       = @dv,
+              HanSuDung   = @hsd,
+              TrangThai   = @tt,
+              ViTri       = @vt,
+              Version     = Version + 1,
+              NgayCapNhat = GETDATE()
           WHERE MaTP = @id AND Version = @v
         `);
 
@@ -130,32 +152,40 @@ export class InventoryRepository {
         return false; // Thất bại do xung đột OCC
       }
 
-      // Xác định hành động ghi log
+      // Xác định hành động và ghi chú log
       let action = 'CAP_NHAT';
-      let note = `Cập nhật thực phẩm.`;
-      if (existing.SoLuong !== data.soLuong) {
+      const notes: string[] = [];
+
+      if (newTenTP !== existing.TenTP) {
+        notes.push(`Đổi tên: "${existing.TenTP}" → "${newTenTP}"`);
+      }
+      if (data.soLuong !== existing.SoLuong) {
         if (data.soLuong === 0) {
           action = 'TIEU_THU';
-          note = `Đã tiêu thụ hết sạch.`;
+          notes.push('Đã tiêu thụ hết sạch.');
         } else if (data.soLuong < existing.SoLuong) {
           action = 'TIEU_THU';
-          note = `Đã tiêu thụ bớt (Giảm ${existing.SoLuong - data.soLuong} ${existing.DonVi}).`;
+          notes.push(`Đã tiêu thụ bớt (Giảm ${existing.SoLuong - data.soLuong} ${existing.DonVi || ''}).`);
         } else {
-          note = `Tăng số lượng (Thêm ${data.soLuong - existing.SoLuong} ${existing.DonVi}).`;
+          notes.push(`Tăng số lượng (Thêm ${data.soLuong - existing.SoLuong} ${existing.DonVi || ''}).`);
         }
       }
+      if (newViTri !== existing.ViTri) {
+        notes.push(`Chuyển vị trí: ${existing.ViTri || 'chưa xác định'} → ${newViTri || 'chưa xác định'}.`);
+      }
+      const note = notes.length > 0 ? notes.join(' ') : 'Cập nhật thực phẩm.';
 
       // Ghi nhật ký kho
       await tx.request()
-        .input('tp', sql.Int, id)
-        .input('ten', sql.NVarChar(100), existing.TenTP)
-        .input('nhom', sql.Int, existing.MaNhom)
-        .input('user', sql.Int, updaterId)
-        .input('act', sql.NVarChar(50), action)
+        .input('tp',     sql.Int,           id)
+        .input('ten',    sql.NVarChar(100),  newTenTP)
+        .input('nhom',   sql.Int,           existing.MaNhom)
+        .input('user',   sql.Int,           updaterId)
+        .input('act',    sql.NVarChar(50),  action)
         .input('before', sql.Decimal(10,2), existing.SoLuong)
-        .input('after', sql.Decimal(10,2), data.soLuong)
-        .input('dv', sql.NVarChar(50), existing.DonVi)
-        .input('note', sql.NVarChar(255), note)
+        .input('after',  sql.Decimal(10,2), data.soLuong)
+        .input('dv',     sql.NVarChar(50),  existing.DonVi || newDonVi || null)
+        .input('note',   sql.NVarChar(255), note)
         .query(`
           INSERT INTO NhatKyKho (MaTP, TenTP, MaNhom, NguoiThucHien, HanhDong, SoLuongTruoc, SoLuongSau, DonVi, GhiChu)
           VALUES (@tp, @ten, @nhom, @user, @act, @before, @after, @dv, @note)

@@ -350,11 +350,20 @@ export class ShoppingRepository {
       let mergedCount = 0;
 
       for (const item of purchasedItems) {
+        // Ép kiểu rõ ràng sang Number để tránh MSSQL Decimal-as-string bug
+        // (mssql driver đôi khi trả giá trị Decimal dưới dạng string, khi truyền vào sql.Decimal(10,2)
+        //  mà không cast sẽ gây tính toán sai SoLuong + @sl = SoLuong + "X" = undefined/NaN)
+        const soLuongMua = Number(item.SoLuong);
+        if (isNaN(soLuongMua) || soLuongMua <= 0) {
+          // Bỏ qua item với số lượng không hợp lệ
+          continue;
+        }
+
         const existing = await new sql.Request(transaction)
           .input('g',   sql.Int,      groupId)
           .input('ten', sql.NVarChar, item.TenThucPham.trim())
           .query(`
-            SELECT TOP 1 MaTP
+            SELECT TOP 1 MaTP, SoLuong
             FROM KhoThucPham WITH (UPDLOCK, ROWLOCK)
             WHERE MaNhom = @g
               AND LTRIM(RTRIM(LOWER(TenTP))) = LTRIM(RTRIM(LOWER(@ten)))
@@ -363,26 +372,54 @@ export class ShoppingRepository {
           `);
 
         if (existing.recordset.length > 0) {
+          const beforeQty = Number(existing.recordset[0].SoLuong);
           await new sql.Request(transaction)
-            .input('maTP', sql.Int,          existing.recordset[0].MaTP)
-            .input('sl',   sql.Decimal(10,2), item.SoLuong)
+            .input('maTP', sql.Int,           existing.recordset[0].MaTP)
+            .input('sl',   sql.Decimal(10,2), soLuongMua)
             .query(`
               UPDATE KhoThucPham
-              SET SoLuong = SoLuong + @sl,
-                  TrangThai = 'CON_HAN',
-                  NgayNhap  = CAST(GETDATE() AS DATE)
+              SET SoLuong     = SoLuong + @sl,
+                  TrangThai   = 'CON_HAN',
+                  NgayNhap    = CAST(GETDATE() AS DATE),
+                  NgayCapNhat = GETDATE()
               WHERE MaTP = @maTP
+            `);
+          await new sql.Request(transaction)
+            .input('tp',     sql.Int,           existing.recordset[0].MaTP)
+            .input('ten',    sql.NVarChar,      item.TenThucPham.trim())
+            .input('nhom',   sql.Int,           groupId)
+            .input('user',   sql.Int,           _userId)
+            .input('before', sql.Decimal(10,2), beforeQty)
+            .input('after',  sql.Decimal(10,2), beforeQty + soLuongMua)
+            .input('dv',     sql.NVarChar,      item.DonVi || null)
+            .query(`
+              INSERT INTO NhatKyKho (MaTP, TenTP, MaNhom, NguoiThucHien, HanhDong, SoLuongTruoc, SoLuongSau, DonVi, GhiChu)
+              VALUES (@tp, @ten, @nhom, @user, 'THEM_MOI', @before, @after, @dv, N'Nhập kho từ danh sách mua sắm')
             `);
           mergedCount++;
         } else {
-          await new sql.Request(transaction)
-            .input('g',   sql.Int,          groupId)
-            .input('ten', sql.NVarChar,     item.TenThucPham.trim())
-            .input('sl',  sql.Decimal(10,2), item.SoLuong)
-            .input('dv',  sql.NVarChar,     item.DonVi || null)
+          const insertResult = await new sql.Request(transaction)
+            .input('g',   sql.Int,           groupId)
+            .input('ten', sql.NVarChar,      item.TenThucPham.trim())
+            .input('sl',  sql.Decimal(10,2), soLuongMua)
+            .input('dv',  sql.NVarChar,      item.DonVi || null)
             .query(`
-              INSERT INTO KhoThucPham (MaNhom, TenTP, SoLuong, DonVi, TrangThai, NgayNhap)
-              VALUES (@g, @ten, @sl, @dv, 'CON_HAN', CAST(GETDATE() AS DATE))
+              INSERT INTO KhoThucPham (MaNhom, TenTP, SoLuong, DonVi, TrangThai, NgayNhap, Version, NgayCapNhat)
+              OUTPUT INSERTED.MaTP
+              VALUES (@g, @ten, @sl, @dv, 'CON_HAN', CAST(GETDATE() AS DATE), 1, GETDATE())
+            `);
+          const newMaTP = insertResult.recordset[0].MaTP;
+          await new sql.Request(transaction)
+            .input('tp',     sql.Int,           newMaTP)
+            .input('ten',    sql.NVarChar,      item.TenThucPham.trim())
+            .input('nhom',   sql.Int,           groupId)
+            .input('user',   sql.Int,           _userId)
+            .input('before', sql.Decimal(10,2), 0)
+            .input('after',  sql.Decimal(10,2), soLuongMua)
+            .input('dv',     sql.NVarChar,      item.DonVi || null)
+            .query(`
+              INSERT INTO NhatKyKho (MaTP, TenTP, MaNhom, NguoiThucHien, HanhDong, SoLuongTruoc, SoLuongSau, DonVi, GhiChu)
+              VALUES (@tp, @ten, @nhom, @user, 'THEM_MOI', @before, @after, @dv, N'Nhập kho từ danh sách mua sắm')
             `);
           addedCount++;
         }

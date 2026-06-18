@@ -24,7 +24,7 @@ export function AddInventoryItemModal({
   const [formData, setFormData] = useState({
     name: "",
     quantity: "",
-    unit: "",
+    unit: "cái",
     location: "Tủ lạnh",
     category: "Thịt",
     expiryDate: "",
@@ -37,7 +37,7 @@ export function AddInventoryItemModal({
     setFormData({
       name: "",
       quantity: "",
-      unit: "",
+      unit: "cái",
       location: "Tủ lạnh",
       category: "Thịt",
       expiryDate: "",
@@ -90,6 +90,7 @@ export function AddInventoryItemModal({
                   <SelectValue placeholder="Chọn đơn vị" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="cái">Cái</SelectItem>
                   <SelectItem value="hộp">Hộp</SelectItem>
                   <SelectItem value="kg">Kg</SelectItem>
                   <SelectItem value="gram">Gram</SelectItem>
@@ -97,6 +98,8 @@ export function AddInventoryItemModal({
                   <SelectItem value="củ">Củ</SelectItem>
                   <SelectItem value="bó">Bó</SelectItem>
                   <SelectItem value="gói">Gói</SelectItem>
+                  <SelectItem value="lít">Lít</SelectItem>
+                  <SelectItem value="ml">Ml</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -143,8 +146,8 @@ export function AddInventoryItemModal({
               value={formData.expiryDate}
               onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
               className="rounded-[var(--radius-sm)] border-[var(--border-light)] focus-visible:ring-[var(--gold)] focus-visible:border-[var(--gold)]"
-              required
             />
+            <p className="text-xs text-[var(--text-muted)] mt-1">Tùy chọn — để trống nếu không có hạn sử dụng</p>
           </div>
 
           <div>

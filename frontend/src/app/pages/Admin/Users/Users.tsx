@@ -18,24 +18,20 @@ const PAGE_SIZE = 8;
 
 const roleConfig: Record<string, { label: string; cls: string }> = {
   admin: { label: "Quản trị viên", cls: "bg-purple-100 text-purple-700 border-purple-200" },
-  moderator: { label: "Kiểm duyệt", cls: "bg-blue-100 text-blue-700 border-blue-200" },
-  user: { label: "Người dùng", cls: "bg-gray-100 text-gray-600 border-gray-200" },
+  member: { label: "Thành viên", cls: "bg-gray-100 text-gray-600 border-gray-200" },
 };
 
 const statusConfig: Record<string, { label: string; cls: string }> = {
   active: { label: "Hoạt động", cls: "bg-green-100 text-green-700 border-green-200" },
-  inactive: { label: "Tạm ngưng", cls: "bg-yellow-100 text-yellow-700 border-yellow-200" },
-  banned: { label: "Bị cấm", cls: "bg-red-100 text-red-700 border-red-200" },
+  locked: { label: "Đã khóa", cls: "bg-red-100 text-red-700 border-red-200" },
 };
 
 const filterTabs = [
   { key: "all", label: "Tất cả" },
   { key: "admin", label: "Admin" },
-  { key: "moderator", label: "Kiểm duyệt" },
-  { key: "user", label: "Người dùng" },
+  { key: "member", label: "Thành viên" },
   { key: "active", label: "Hoạt động" },
-  { key: "inactive", label: "Tạm ngưng" },
-  { key: "banned", label: "Bị cấm" },
+  { key: "locked", label: "Đã khóa" },
 ];
 
 function UserActionModal({
@@ -46,17 +42,17 @@ function UserActionModal({
   onBan: () => void; onReset: () => void; onDelete: () => void;
 }) {
   if (!user) return null;
-  const isBanned = user.status === "banned";
+  const isLocked = user.status === "locked";
 
   const actions = [
     { icon: Eye, label: "Xem chi tiết", color: "text-[var(--purple-deep)]", bg: "hover:bg-purple-50", onClick: onView },
     { icon: Edit, label: "Chỉnh sửa", color: "text-blue-600", bg: "hover:bg-blue-50", onClick: onEdit },
     { icon: RefreshCw, label: "Reset mật khẩu", color: "text-green-600", bg: "hover:bg-green-50", onClick: onReset },
     {
-      icon: isBanned ? UserCheck : Ban,
-      label: isBanned ? "Bỏ cấm tài khoản" : "Cấm tài khoản",
-      color: isBanned ? "text-green-700" : "text-orange-600",
-      bg: isBanned ? "hover:bg-green-50" : "hover:bg-orange-50",
+      icon: isLocked ? UserCheck : Ban,
+      label: isLocked ? "Mở khóa tài khoản" : "Khóa tài khoản",
+      color: isLocked ? "text-green-700" : "text-orange-600",
+      bg: isLocked ? "hover:bg-green-50" : "hover:bg-orange-50",
       onClick: onBan,
     },
     { icon: Trash2, label: "Xóa người dùng", color: "text-red-600", bg: "hover:bg-red-50", onClick: onDelete },
@@ -100,7 +96,7 @@ export function Users() {
         u.email.toLowerCase().includes(search.toLowerCase()) ||
         u.phone.includes(search);
       const matchTab = activeTab === "all" ? true :
-        ["admin", "moderator", "user"].includes(activeTab) ? u.role === activeTab :
+        ["admin", "member"].includes(activeTab) ? u.role === activeTab :
         u.status === activeTab;
       return matchSearch && matchTab;
     });
@@ -112,7 +108,7 @@ export function Users() {
   const stats = useMemo(() => ({
     total: users.length,
     active: users.filter(u => u.status === "active").length,
-    banned: users.filter(u => u.status === "banned").length,
+    locked: users.filter(u => u.status === "locked").length,
     admins: users.filter(u => u.role === "admin").length,
   }), [users]);
 
@@ -123,11 +119,11 @@ export function Users() {
 
   const handleBanToggle = async (u: AdminUser) => {
     try {
-      const isBanned = u.status === "banned";
-      const nextStatus = isBanned ? "ACTIVE" : "BANNED";
+      const isLocked = u.status === "locked";
+      const nextStatus = isLocked ? "ACTIVE" : "LOCKED";
       await adminApi.updateStatus(Number(u.id), nextStatus);
       await reload();
-      toast.success(isBanned ? `Đã bỏ cấm tài khoản "${u.name}"` : `Đã khóa tài khoản "${u.name}"`);
+      toast.success(isLocked ? `Đã mở khóa tài khoản "${u.name}"` : `Đã khóa tài khoản "${u.name}"`);
     } catch (e: any) {
       toast.error(e.message || "Thao tác thất bại");
     }
@@ -197,7 +193,7 @@ export function Users() {
   const statCards = [
     { label: "Tổng người dùng", value: stats.total, icon: UsersIcon, color: "from-[var(--purple-deep)] to-[var(--purple-light)]" },
     { label: "Đang hoạt động", value: stats.active, icon: CheckCircle, color: "from-green-500 to-green-400" },
-    { label: "Bị cấm", value: stats.banned, icon: Ban, color: "from-red-500 to-red-400" },
+    { label: "Bị khóa", value: stats.locked, icon: Ban, color: "from-red-500 to-red-400" },
     { label: "Quản trị viên", value: stats.admins, icon: Shield, color: "from-[var(--gold)] to-yellow-400" },
   ];
 
@@ -254,7 +250,7 @@ export function Users() {
                 className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-smooth ${activeTab === tab.key ? "bg-gradient-purple text-white shadow-[var(--shadow-btn)]" : "bg-[var(--card-bg)] text-[var(--text-muted)] hover:bg-white hover:text-[var(--text-dark)]"}`}>
                 {tab.label}
                 <span className="ml-1.5 opacity-70">
-                  ({tab.key === "all" ? users.length : ["admin","moderator","user"].includes(tab.key) ? users.filter(u => u.role === tab.key).length : users.filter(u => u.status === tab.key).length})
+                  ({tab.key === "all" ? users.length : ["admin","member"].includes(tab.key) ? users.filter(u => u.role === tab.key).length : users.filter(u => u.status === tab.key).length})
                 </span>
               </button>
             ))}
@@ -290,8 +286,8 @@ export function Users() {
                   <TableRow key={user.id} className="border-[var(--border-light)] hover:bg-[var(--card-bg)] transition-smooth">
                     <TableCell className="pl-6">
                       <div className="flex items-center gap-3">
-                        <Avatar className={`w-10 h-10 border-2 ${user.status === "banned" ? "border-red-200" : "border-[var(--purple-light)]"}`}>
-                          <AvatarFallback className={`font-bold text-sm ${user.status === "banned" ? "bg-red-100 text-red-600" : "bg-gradient-purple text-white"}`}>
+                        <Avatar className={`w-10 h-10 border-2 ${user.status === "locked" ? "border-red-200" : "border-[var(--purple-light)]"}`}>
+                          <AvatarFallback className={`font-bold text-sm ${user.status === "locked" ? "bg-red-100 text-red-600" : "bg-gradient-purple text-white"}`}>
                             {user.avatar}
                           </AvatarFallback>
                         </Avatar>

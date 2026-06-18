@@ -44,15 +44,27 @@ export function MainLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { success } = useToastContext();
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, isAuthenticated, isLoading, logout } = useAuth();
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
 
   // Redirect to login if not authenticated
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isLoading && !isAuthenticated) {
       navigate("/auth/login");
     }
-  }, [isAuthenticated, navigate]);
+  }, [isLoading, isAuthenticated, navigate]);
+
+  // Dynamic page title and favicon for User Panel
+  useEffect(() => {
+    document.title = "Nateat - Đi Chợ Tiện Lợi";
+    let link: HTMLLinkElement | null = document.querySelector("link[rel~='icon']");
+    if (!link) {
+      link = document.createElement('link');
+      link.rel = 'icon';
+      document.getElementsByTagName('head')[0].appendChild(link);
+    }
+    link.href = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238E44AD' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275Z'/><path d='m5 3 1 2.5L8.5 6 6 7 5 9.5 4 7 1.5 6 4 5Z'/><path d='m19 17 1 2.5 2.5.5-2.5 1-1 2.5-1-2.5-2.5-1 2.5-1Z'/></svg>";
+  }, [location.pathname]);
 
   const isActive = (href: string) =>
     location.pathname === href ||
@@ -63,6 +75,17 @@ export function MainLayout() {
     success("Đã đăng xuất", "Hẹn gặp lại bạn!");
     navigate("/auth/login");
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[var(--background)]">
+        <div className="flex flex-col items-center gap-4 animate-pulse">
+          <div className="w-12 h-12 border-4 border-[var(--purple-pale)] border-t-[var(--purple-primary)] rounded-full animate-spin"></div>
+          <p className="text-sm font-semibold text-[var(--purple-primary)]">Đang tải phiên đăng nhập...</p>
+        </div>
+      </div>
+    );
+  }
 
   const displayName = user?.HoTen || user?.hoTen || "Người dùng";
   const displayEmail = user?.Email || user?.email || "";

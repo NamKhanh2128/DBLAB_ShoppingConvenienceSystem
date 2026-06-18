@@ -46,6 +46,7 @@ export function Inventory() {
   const [useItemModal, setUseItemModal] = useState<any>(null);
   const [deleteItemModal, setDeleteItemModal] = useState<any>(null);
   const [editingItem, setEditingItem] = useState<any>(null);
+  const [pendingUpdateIds, setPendingUpdateIds] = useState<Set<number>>(new Set());
 
   // Quick form state
   const [formName, setFormName] = useState("");
@@ -116,7 +117,7 @@ export function Inventory() {
       const expiryInfo = batches.find(b => b.expiryStatus !== "none" && b.expiryStatus !== "good") || first;
 
       return {
-        id: `group-${key}`,
+        id: batches.length > 1 ? `group-${key}` : first.id,
         name: first.name,
         quantity: totalQty,
         unit: first.unit,
@@ -238,14 +239,42 @@ export function Inventory() {
 
   const handleUseItemSubmit = async (data: any) => {
     if (!useItemModal) return;
+    
+    const currentQty = Number(useItemModal.quantity) || 0;
+    
+    // Chặn sử dụng khi đã hết hàng
+    if (currentQty <= 0) {
+      error("Không thể sử dụng", `"${useItemModal.name}" đã hết trong kho.`);
+      setUseItemModal(null);
+      return;
+    }
+
+    const amount = parseFloat(data.quantity);
+    if (isNaN(amount) || amount <= 0) {
+      error("Số lượng không hợp lệ", "Số lượng sử dụng phải lớn hơn 0.");
+      return;
+    }
+    if (amount > currentQty) {
+      error(
+        "Vượt quá số lượng tồn kho",
+        `Chỉ còn ${currentQty} ${useItemModal.unit} trong kho. Không thể sử dụng ${amount} ${useItemModal.unit}.`
+      );
+      return;
+    }
+
+    setPendingUpdateIds(prev => {
+      const next = new Set(prev);
+      next.add(useItemModal.id);
+      return next;
+    });
+
     try {
-      const amount = parseFloat(data.quantity || 1);
-      const newQty = Math.max(0, useItemModal.quantity - amount);
+      const newQty = Math.max(0, currentQty - amount);
       
       // Gửi kèm version để kiểm soát xung đột OCC
       await updateItem(useItemModal.id, {
         soLuong: newQty,
-        trangThai: newQty === 0 ? "HONG" : useItemModal.trangThai,
+        trangThai: useItemModal.trangThai,
         viTri: useItemModal.location,
         version: useItemModal.version
       });
@@ -256,15 +285,29 @@ export function Inventory() {
       // Bắt lỗi OCC 409 Conflict
       error("Lỗi cập nhật", e.message || "Vật phẩm đã bị chỉnh sửa bởi người khác.");
       reload(); // Reload data immediately to reflect standard state
+    } finally {
+      setPendingUpdateIds(prev => {
+        const next = new Set(prev);
+        next.delete(useItemModal.id);
+        return next;
+      });
     }
   };
 
   const handleQuickDecrement = async (item: any, amt: number = 1) => {
+    if (pendingUpdateIds.has(item.id)) return;
+
+    setPendingUpdateIds(prev => {
+      const next = new Set(prev);
+      next.add(item.id);
+      return next;
+    });
+
     try {
       const newQty = Math.max(0, item.quantity - amt);
       await updateItem(item.id, {
         soLuong: newQty,
-        trangThai: newQty === 0 ? "HONG" : item.trangThai,
+        trangThai: item.trangThai,
         viTri: item.location,
         version: item.version
       });
@@ -272,6 +315,12 @@ export function Inventory() {
     } catch (e: any) {
       error("Lỗi xung đột dữ liệu (OCC)", e.message || "Ai đó vừa cập nhật vật phẩm này. Đang tải lại...");
       reload();
+    } finally {
+      setPendingUpdateIds(prev => {
+        const next = new Set(prev);
+        next.delete(item.id);
+        return next;
+      });
     }
   };
 
@@ -294,7 +343,7 @@ export function Inventory() {
     return (
       <div className="space-y-6 animate-slide-up pb-10">
         {/* ─── HEADER ──────────────────────────────────────────────────────── */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-[var(--border-light)] pb-4">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-[var(--border-purple)] pb-4">
           <div>
             <h1 className="text-3xl font-black text-[var(--text-dark)] tracking-tight mb-1 flex items-center gap-2">
               Kho thực phẩm <span className="text-xl">🏪</span>
@@ -313,7 +362,7 @@ export function Inventory() {
     <div className="space-y-6 animate-slide-up pb-10">
       
       {/* ─── HEADER ──────────────────────────────────────────────────────── */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-[var(--border-light)] pb-4">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-[var(--border-purple)] pb-4">
         <div>
           <h1 className="text-3xl font-black text-[var(--text-dark)] tracking-tight mb-1 flex items-center gap-2">
             Kho thực phẩm <span className="text-xl">🏪</span>
@@ -326,14 +375,14 @@ export function Inventory() {
           <Button 
             onClick={reload} 
             variant="outline" 
-            className="rounded-[var(--radius-btn)] border-[var(--border-light)] hover:bg-[var(--card-bg)] text-xs font-semibold py-2 px-3 flex items-center gap-1.5"
+            className="rounded-[var(--radius-btn)] border-[var(--border-purple)] hover:bg-[var(--purple-pale)]/30 hover:text-[var(--purple-deep)] text-xs font-semibold py-2 px-3 flex items-center gap-1.5 transition-all"
             disabled={loading}
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-[var(--success)]" : ""}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-[var(--purple-primary)]" : ""}`} />
             Làm mới
           </Button>
           <Button
-            className="bg-gradient-to-r from-[var(--success)] to-[#16A34A] text-white font-bold shadow-md hover-lift rounded-[var(--radius-btn)] py-2 px-4 text-xs"
+            className="bg-gradient-purple text-white font-bold shadow-[var(--shadow-btn-purple)] hover-lift rounded-[var(--radius-btn)] py-2 px-4 text-xs border-none"
             onClick={() => setShowAddItem(true)}
           >
             <Plus className="w-4 h-4 mr-1.5" strokeWidth={2.5} />
@@ -342,143 +391,44 @@ export function Inventory() {
         </div>
       </div>
 
-      {/* ─── MAIN 3-COLUMN GRID LAYOUT ──────────────────────────────────── */}
+      {/* ─── MAIN 2-COLUMN GRID LAYOUT ──────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         
         {/* =================================================================
-            CỘT TRÁI (LỌC & THỐNG KÊ): Lọc thông minh, gộp mặt hàng, stats
+            CỘT TRÁI (DANH SÁCH THỰC PHẨM): Tìm kiếm, Grid Cards, accordion
+            (lg:col-span-8 - Rộng rãi, thoáng đãng để xem thực phẩm)
            ================================================================= */}
-        <div className="lg:col-span-3 space-y-6">
+        <div className="lg:col-span-8 space-y-4">
           
-          {/* Quick Stats Grid */}
-          <div className="grid grid-cols-2 gap-3">
-            <Card className="border-none shadow-[var(--shadow-card)] bg-gradient-to-br from-[var(--purple-deep)]/5 to-[var(--purple-deep)]/10 text-center rounded-[var(--radius)]">
-              <CardContent className="p-3">
-                <p className="text-2xl font-black text-[var(--purple-deep)]">{loading ? "..." : rawItems.length}</p>
-                <p className="text-[10px] text-[var(--text-muted)] font-semibold mt-0.5">Tổng vật phẩm</p>
-              </CardContent>
-            </Card>
-
-            <Card className="border-none shadow-[var(--shadow-card)] bg-gradient-to-br from-red-500/5 to-red-500/10 text-center rounded-[var(--radius)]">
-              <CardContent className="p-3">
-                <p className="text-2xl font-black text-red-600">{loading ? "..." : expiring.length}</p>
-                <p className="text-[10px] text-red-600/70 font-semibold mt-0.5">Sắp/Đã hết hạn</p>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Filter Panel */}
-          <Card className="border-none shadow-[var(--shadow-card)] rounded-[var(--radius)] bg-white">
-            <CardHeader className="p-4 pb-2 border-b border-[var(--border-light)]">
-              <CardTitle className="text-sm font-bold flex items-center justify-between text-[var(--text-dark)]">
-                <span>Bộ lọc thông minh</span>
-                <Filter className="w-4 h-4 text-[var(--text-muted)]" />
-              </CardTitle>
-            </CardHeader>
-            
-            <CardContent className="p-4 space-y-5 text-sm">
-              
-              {/* Location tabs */}
-              <div className="space-y-2">
-                <span className="font-semibold text-xs text-[var(--text-muted)] uppercase tracking-wider block">Khu vực lưu trữ</span>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {["Tất cả", "Tủ lạnh", "Ngăn đông", "Tủ bếp", "Kệ đồ"].map((loc) => (
-                    <button
-                      key={loc}
-                      onClick={() => setSelectedLocation(loc)}
-                      className={`py-1.5 px-2 rounded-[var(--radius-sm)] font-semibold text-xs border transition-all text-left truncate ${
-                        selectedLocation === loc
-                          ? "bg-[var(--success)]/10 text-[var(--success)] border-[var(--success)]"
-                          : "border-[var(--border-light)] hover:bg-[var(--card-bg)] text-[var(--text-muted)]"
-                      }`}
-                    >
-                      {loc === "Tất cả" ? "🌐 Tất cả" : loc === "Tủ lạnh" ? "🧊 Tủ lạnh" : loc === "Ngăn đông" ? "❄️ Ngăn đông" : loc === "Tủ bếp" ? "🍳 Tủ bếp" : "📦 Kệ đồ"}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Expiry filter */}
-              <div className="space-y-2">
-                <span className="font-semibold text-xs text-[var(--text-muted)] uppercase tracking-wider block">Tình trạng hạn dùng</span>
-                <div className="flex flex-col gap-1.5">
-                  {[
-                    { value: "all", label: "Tất cả thực phẩm" },
-                    { value: "critical", label: "🚨 Hết hạn / Gấp gáp" },
-                    { value: "warning", label: "⏳ Sắp hết hạn" },
-                    { value: "good", label: "✅ Còn hạn tốt" },
-                    { value: "none", label: "♾️ Không có HSD" }
-                  ].map((exp) => (
-                    <label key={exp.value} className="flex items-center gap-2 font-medium cursor-pointer text-xs text-[var(--text-muted)]">
-                      <input
-                        type="radio"
-                        name="expiryFilter"
-                        checked={expiryFilter === exp.value}
-                        onChange={() => setExpiryFilter(exp.value)}
-                        className="rounded-full text-[var(--success)] focus:ring-[var(--success)]"
-                      />
-                      <span className={expiryFilter === exp.value ? "text-[var(--text-dark)] font-bold" : ""}>
-                        {exp.label}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              {/* Group toggle & Low stock checkbox */}
-              <div className="space-y-3 pt-3 border-t border-[var(--border-light)]">
-                <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-[var(--text-dark)]">
-                  <input
-                    type="checkbox"
-                    checked={groupDuplicates}
-                    onChange={(e) => setGroupDuplicates(e.target.checked)}
-                    className="rounded text-[var(--success)] focus:ring-[var(--success)]"
-                  />
-                  <Layers className="w-3.5 h-3.5 text-[var(--purple-deep)]" />
-                  Gộp các mặt hàng cùng tên
-                </label>
-
-                <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-[var(--text-dark)]">
-                  <input
-                    type="checkbox"
-                    checked={lowStockOnly}
-                    onChange={(e) => setLowStockOnly(e.target.checked)}
-                    className="rounded text-[var(--success)] focus:ring-[var(--success)]"
-                  />
-                  <ShoppingBag className="w-3.5 h-3.5 text-[var(--danger)]" />
-                  Chỉ hiện thực phẩm sắp hết (≤ 2)
-                </label>
-              </div>
-
-            </CardContent>
-          </Card>
-
-        </div>
-
-        {/* =================================================================
-            CỘT GIỮA (DANH SÁCH THỰC PHẨM): Tìm kiếm, Grid Cards, accordion
-           ================================================================= */}
-        <div className="lg:col-span-6 space-y-4">
-          
-          {/* Search bar */}
-          <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
-            <Input
-              placeholder="Tìm nhanh thực phẩm theo tên..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="pl-10 h-11 bg-white border-[var(--border-light)] focus-visible:ring-[var(--success)] focus-visible:border-[var(--success)] rounded-[var(--radius-sm)] font-medium shadow-[var(--shadow-card)]"
-            />
+          {/* Search bar & Filter trigger */}
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
+              <Input
+                placeholder="Tìm nhanh thực phẩm theo tên..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="pl-10 h-11 bg-white border-[var(--border-purple)] focus-visible:ring-[var(--purple-primary)]/20 focus-visible:border-[var(--purple-primary)] rounded-[var(--radius-sm)] font-medium shadow-[var(--shadow-card)] transition-all"
+              />
+            </div>
+            <Button
+              variant="outline"
+              className="h-11 px-3 border-[var(--border-purple)] bg-white hover:bg-[var(--purple-pale)]/30 hover:text-[var(--purple-deep)] rounded-[var(--radius-sm)] flex items-center gap-1.5 font-semibold text-xs lg:hidden shadow-[var(--shadow-card)] text-[var(--text-dark)] transition-all"
+              onClick={() => setShowFilter(true)}
+            >
+              <Filter className="w-4 h-4 text-[var(--text-muted)]" />
+              Bộ lọc
+            </Button>
           </div>
 
           {/* Core Food Grid */}
           {loading && rawItems.length === 0 ? (
-            <div className="flex flex-col justify-center items-center py-20 bg-white rounded-[var(--radius)] shadow-[var(--shadow-card)] border border-[var(--border-light)]">
-              <Loader2 className="w-8 h-8 animate-spin text-[var(--success)]" />
+            <div className="flex flex-col justify-center items-center py-20 bg-white rounded-[var(--radius)] shadow-[var(--shadow-card)] border border-[var(--border-purple)]">
+              <Loader2 className="w-8 h-8 animate-spin text-[var(--purple-primary)]" />
               <span className="mt-3 text-xs text-[var(--text-muted)] font-semibold">Đang đồng bộ và kiểm tra hạn sử dụng...</span>
             </div>
           ) : filteredItems.length === 0 ? (
-            <div className="text-center py-16 bg-white rounded-[var(--radius)] shadow-[var(--shadow-card)] border border-[var(--border-light)] text-[var(--text-muted)]">
+            <div className="text-center py-16 bg-white rounded-[var(--radius)] shadow-[var(--shadow-card)] border border-[var(--border-purple)] text-[var(--text-muted)]">
               <span className="text-5xl">🍉</span>
               <p className="font-bold text-sm mt-3 text-[var(--text-dark)]">Không tìm thấy thực phẩm trùng khớp</p>
               <p className="text-xs mt-1">Vui lòng điều chỉnh bộ lọc hoặc thêm món đồ mới.</p>
@@ -488,16 +438,19 @@ export function Inventory() {
               {filteredItems.map((item) => {
                 const isGrouped = item.isGroup;
                 const isExpanded = expandedGroups[item.id] || false;
+                const isPending = isGrouped
+                  ? item.batches.some((b: any) => pendingUpdateIds.has(b.id))
+                  : pendingUpdateIds.has(item.id);
 
                 return (
-                  <div key={item.id} className="bg-white rounded-[var(--radius)] shadow-[var(--shadow-card)] border border-[var(--border-light)] overflow-hidden transition-all hover:shadow-md">
+                  <div key={item.id} className="bg-white rounded-[var(--radius)] shadow-[var(--shadow-card)] border border-[var(--border-purple)] overflow-hidden hover:border-[var(--purple-primary)] hover:shadow-md transition-all duration-300">
                     
                     {/* Main card representation */}
                     <div className="p-4 flex items-center justify-between gap-3">
                       
                       <div className="flex items-center gap-3 min-w-0">
                         {/* Food Icon box based on category */}
-                        <div className="w-12 h-12 bg-[var(--card-bg)] rounded-xl flex items-center justify-center text-2xl shadow-inner flex-shrink-0">
+                        <div className="w-12 h-12 bg-gradient-to-br from-[var(--purple-pale)] to-[var(--purple-light)]/40 border border-[var(--border-purple)] rounded-2xl flex items-center justify-center text-2xl shadow-sm flex-shrink-0">
                           {item.name.toLowerCase().includes("sữa") ? "🥛" : 
                            item.name.toLowerCase().includes("trứng") ? "🥚" :
                            item.name.toLowerCase().includes("thịt") ? "🥩" :
@@ -545,30 +498,36 @@ export function Inventory() {
                             variant="ghost"
                             className="w-7 h-7 hover:bg-blue-50 hover:text-blue-500"
                             onClick={() => setViewItem(item)}
+                            disabled={isPending}
                             title="Xem chi tiết"
                           >
                             <Eye className="w-3.5 h-3.5" />
                           </Button>
                           <Button
                             size="icon"
-                            variant="ghost"
-                            className="w-7 h-7 hover:bg-[var(--success)]/10 hover:text-[var(--success)]"
+                            variant="outline"
+                            className="w-9 h-7 border border-[var(--border-purple)] hover:bg-[var(--success)]/10 hover:text-[var(--success)] hover:border-[var(--success)]/40 bg-gray-50/30 flex items-center justify-center rounded-lg transition-all font-bold text-xs"
                             onClick={() => {
                               const target = item.isGroup
                                 ? (item.batches.find((b: any) => b.quantity > 0) || item.batches[0])
                                 : item;
                               handleQuickDecrement(target, 1);
                             }}
-                            disabled={item.quantity <= 0}
+                            disabled={item.quantity <= 0 || isPending}
                             title="Tiêu thụ 1"
                           >
-                            <span className="font-bold text-xs">-1</span>
+                            {isPending ? (
+                              <Loader2 className="w-3 h-3 animate-spin text-[var(--success)]" />
+                            ) : (
+                              <span className="font-bold text-xs">-1</span>
+                            )}
                           </Button>
                           <Button
                             size="icon"
                             variant="ghost"
-                            className="w-7 h-7 hover:bg-[var(--success)]/20 hover:text-[var(--success)]"
+                            className="w-7 h-7 rounded-lg hover:bg-[var(--success)]/20 hover:text-[var(--success)]"
                             onClick={() => setUseItemModal(item.isGroup ? (item.batches.find((b: any) => b.quantity > 0) || item.batches[0]) : item)}
+                            disabled={isPending}
                             title="Tiêu thụ tùy chọn"
                           >
                             <Check className="w-3.5 h-3.5" />
@@ -576,8 +535,9 @@ export function Inventory() {
                           <Button
                             size="icon"
                             variant="ghost"
-                            className="w-7 h-7 hover:bg-red-50 hover:text-red-500"
+                            className="w-7 h-7 rounded-lg hover:bg-red-50 hover:text-red-500"
                             onClick={() => setDeleteItemModal(item.isGroup ? item.batches[0] : item)}
+                            disabled={isPending}
                             title="Xóa"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -588,7 +548,7 @@ export function Inventory() {
                             <Button
                               size="icon"
                               variant="ghost"
-                              className="w-7 h-7 hover:bg-gray-100"
+                              className="w-7 h-7 rounded-lg hover:bg-gray-100"
                               onClick={() => toggleGroupExpand(item.id)}
                             >
                               {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -608,39 +568,45 @@ export function Inventory() {
 
                     {/* Group Batches Expansion (OCC and individual data displayed gracefully) */}
                     {isGrouped && isExpanded && (
-                      <div className="bg-gray-50 border-t border-[var(--border-light)] p-3 space-y-2 text-xs">
-                        <div className="font-bold text-[10px] text-[var(--text-muted)] uppercase tracking-wider mb-1 px-1">
+                      <div className="bg-[var(--purple-pale)]/30 border-t border-[var(--border-purple)] p-4 space-y-2.5 text-xs rounded-b-[var(--radius)]">
+                        <div className="font-bold text-[9px] text-[var(--text-muted)] uppercase tracking-wider mb-1 px-1">
                           Chi tiết các lô hàng trong kho
                         </div>
                         {item.batches.map((batch: any, index: number) => (
-                          <div key={batch.id} className="flex items-center justify-between bg-white border border-gray-100 rounded-lg p-2 hover:shadow-sm">
+                          <div key={batch.id} className="flex items-center justify-between bg-white border border-[var(--border-purple)] rounded-xl p-3 shadow-sm hover:border-[var(--purple-primary)] transition-all duration-200">
                             <div className="flex items-center gap-2">
                               <span className="font-semibold text-gray-400">Lô {index + 1}:</span>
                               <span className="font-bold text-gray-800">{batch.quantity} {batch.unit}</span>
-                              <span className="text-[10px] text-gray-400">|</span>
-                              <span className="text-gray-500 flex items-center gap-1">
-                                <Calendar className="w-3 h-3" />
+                              <span className="text-[10px] text-gray-300">|</span>
+                              <span className="text-gray-500 flex items-center gap-1.5 font-medium">
+                                <Calendar className="w-3.5 h-3.5 text-gray-400" />
                                 HSD: {batch.expiryDate || "Không có"}
                               </span>
                             </div>
 
-                            <div className="flex items-center gap-1">
-                              <Badge className={`text-[9px] font-semibold border-none rounded py-0.5 px-1.5 ${batch.expiryBadge}`}>
+                            <div className="flex items-center gap-1.5">
+                              <Badge className={`text-[9px] font-semibold border-none rounded-full py-0.5 px-2 ${batch.expiryBadge}`}>
                                 {batch.expiryIcon} {batch.expiryText}
                               </Badge>
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="h-6 py-0 px-2 text-[10px] text-[var(--success)] border-[var(--success)] hover:bg-[var(--success)] hover:text-white transition-smooth"
+                                className="h-6 py-0 px-2 text-[10px] text-[var(--success)] border-[var(--success)]/30 hover:bg-[var(--success)] hover:text-white hover:border-[var(--success)] rounded-lg transition-smooth flex items-center gap-1 font-bold"
                                 onClick={() => handleQuickDecrement(batch, 1)}
+                                disabled={pendingUpdateIds.has(batch.id)}
                               >
-                                -1 {batch.unit}
+                                {pendingUpdateIds.has(batch.id) ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  `-1 ${batch.unit}`
+                                )}
                               </Button>
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                className="h-6 w-6 p-0 text-red-500 hover:bg-red-50 rounded"
+                                className="h-6 w-6 p-0 text-red-500 hover:bg-red-50 rounded-lg"
                                 onClick={() => setDeleteItemModal(batch)}
+                                disabled={pendingUpdateIds.has(batch.id)}
                               >
                                 <Trash2 className="w-3 h-3" />
                               </Button>
@@ -659,18 +625,128 @@ export function Inventory() {
         </div>
 
         {/* =================================================================
-            CỘT PHẢI (ACTIVITY AUDIT LOG & QUICK ADD): Scanner, shortcuts, logs
+            CỘT PHẢI (SIDEBAR BỘ LỌC, THỐNG KÊ & THÊM NHANH):
+            (lg:col-span-4 - Cân đối và gom toàn bộ chức năng phụ trợ)
            ================================================================= */}
-        <div className="lg:col-span-3 space-y-6">
+        <div className="lg:col-span-4 space-y-6">
           
+          {/* Quick Stats Grid */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-white/95 backdrop-blur-sm border border-[var(--border-purple)] shadow-[var(--shadow-card)] rounded-[var(--radius)] p-4 flex items-center gap-3 hover:border-[var(--purple-primary)] transition-all duration-300">
+              <div className="w-10 h-10 bg-[var(--purple-pale)] rounded-xl flex items-center justify-center text-[var(--purple-deep)] flex-shrink-0 border border-[var(--border-purple)]">
+                <Package className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xl font-black text-[var(--purple-deep)] leading-none">{loading ? "..." : rawItems.length}</p>
+                <p className="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider mt-1.5">Tổng kho</p>
+              </div>
+            </div>
+
+            <div className="bg-white/95 backdrop-blur-sm border border-red-100 shadow-[var(--shadow-card)] rounded-[var(--radius)] p-4 flex items-center gap-3 hover:border-red-300 transition-all duration-300">
+              <div className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center text-red-500 flex-shrink-0 border border-red-100">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xl font-black text-red-500 leading-none">{loading ? "..." : expiring.length}</p>
+                <p className="text-[10px] text-red-500/80 font-bold uppercase tracking-wider mt-1.5">Hết hạn</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Filter Panel (Desktop Only) */}
+          <Card className="border border-[var(--border-purple)] shadow-[var(--shadow-card)] rounded-[var(--radius)] bg-white hidden lg:block overflow-hidden">
+            <CardHeader className="p-4 pb-2 border-b border-[var(--border-purple)]">
+              <CardTitle className="text-xs font-bold flex items-center justify-between text-[var(--text-dark)] uppercase tracking-wider">
+                <span>Bộ lọc thông minh</span>
+                <Filter className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+              </CardTitle>
+            </CardHeader>
+            
+            <CardContent className="p-4 space-y-5 text-sm">
+              
+              {/* Location tabs */}
+              <div className="space-y-2">
+                <span className="font-semibold text-xs text-[var(--text-muted)] uppercase tracking-wider block">Khu vực lưu trữ</span>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {["Tất cả", "Tủ lạnh", "Ngăn đông", "Tủ bếp", "Kệ đồ"].map((loc) => (
+                    <button
+                      key={loc}
+                      onClick={() => setSelectedLocation(loc)}
+                      className={`py-1.5 px-2.5 rounded-[var(--radius-sm)] font-bold text-xs border transition-all text-left truncate ${
+                        selectedLocation === loc
+                          ? "bg-[var(--purple-pale)] text-[var(--purple-deep)] border-[var(--purple-primary)] shadow-sm"
+                          : "border-[var(--border-purple)] hover:bg-[var(--purple-pale)]/30 text-[var(--text-muted)] hover:text-[var(--text-dark)]"
+                      }`}
+                    >
+                      {loc === "Tất cả" ? "🌐 Tất cả" : loc === "Tủ lạnh" ? "🧊 Tủ lạnh" : loc === "Ngăn đông" ? "❄️ Ngăn đông" : loc === "Tủ bếp" ? "🍳 Tủ bếp" : "📦 Kệ đồ"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Expiry filter */}
+              <div className="space-y-2">
+                <span className="font-semibold text-xs text-[var(--text-muted)] uppercase tracking-wider block">Tình trạng hạn dùng</span>
+                <div className="flex flex-col gap-1.5">
+                  {[
+                    { value: "all", label: "Tất cả thực phẩm" },
+                    { value: "critical", label: "🚨 Hết hạn / Gấp gáp" },
+                    { value: "warning", label: "⏳ Sắp hết hạn" },
+                    { value: "good", label: "✅ Còn hạn tốt" },
+                    { value: "none", label: "♾️ Không có HSD" }
+                  ].map((exp) => (
+                    <label key={exp.value} className="flex items-center gap-2 font-medium cursor-pointer text-xs text-[var(--text-muted)] hover:text-[var(--text-dark)] transition-colors">
+                      <input
+                        type="radio"
+                        name="expiryFilter"
+                        checked={expiryFilter === exp.value}
+                        onChange={() => setExpiryFilter(exp.value)}
+                        className="rounded-full border-[var(--border-purple)] text-[var(--purple-primary)] focus:ring-[var(--purple-primary)]"
+                      />
+                      <span className={expiryFilter === exp.value ? "text-[var(--text-dark)] font-bold" : ""}>
+                        {exp.label}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Group toggle & Low stock checkbox */}
+              <div className="space-y-3 pt-3 border-t border-[var(--border-purple)]">
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-[var(--text-dark)] hover:text-[var(--purple-deep)] transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={groupDuplicates}
+                    onChange={(e) => setGroupDuplicates(e.target.checked)}
+                    className="rounded border-[var(--border-purple)] text-[var(--purple-primary)] focus:ring-[var(--purple-primary)]"
+                  />
+                  <Layers className="w-3.5 h-3.5 text-[var(--purple-deep)]" />
+                  Gộp các mặt hàng cùng tên
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-[var(--text-dark)] hover:text-[var(--purple-deep)] transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={lowStockOnly}
+                    onChange={(e) => setLowStockOnly(e.target.checked)}
+                    className="rounded border-[var(--border-purple)] text-[var(--purple-primary)] focus:ring-[var(--purple-primary)]"
+                  />
+                  <ShoppingBag className="w-3.5 h-3.5 text-red-500" />
+                  Chỉ hiện thực phẩm sắp hết (≤ 2)
+                </label>
+              </div>
+
+            </CardContent>
+          </Card>
+
           {/* Tab Controller */}
-          <div className="bg-white p-1 rounded-xl shadow-[var(--shadow-card)] border border-[var(--border-light)] grid grid-cols-2">
+          <div className="bg-white p-1 rounded-xl shadow-[var(--shadow-card)] border border-[var(--border-purple)] grid grid-cols-2">
             <button
               onClick={() => setRightTab("add")}
               className={`py-2 px-3 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition-all ${
                 rightTab === "add"
-                  ? "bg-gradient-to-r from-[var(--success)] to-[#16A34A] text-white shadow-sm"
-                  : "text-[var(--text-muted)] hover:bg-gray-100"
+                  ? "bg-gradient-purple text-white shadow-sm"
+                  : "text-[var(--text-muted)] hover:bg-[var(--purple-pale)]/50 hover:text-[var(--purple-deep)]"
               }`}
             >
               <Plus className="w-3.5 h-3.5" />
@@ -680,8 +756,8 @@ export function Inventory() {
               onClick={() => setRightTab("logs")}
               className={`py-2 px-3 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition-all ${
                 rightTab === "logs"
-                  ? "bg-gradient-to-r from-[var(--success)] to-[#16A34A] text-white shadow-sm"
-                  : "text-[var(--text-muted)] hover:bg-gray-100"
+                  ? "bg-gradient-purple text-white shadow-sm"
+                  : "text-[var(--text-muted)] hover:bg-[var(--purple-pale)]/50 hover:text-[var(--purple-deep)]"
               }`}
             >
               <History className="w-3.5 h-3.5" />
@@ -691,8 +767,8 @@ export function Inventory() {
 
           {/* TAB CONTENT: QUICK ADD */}
           {rightTab === "add" && (
-            <Card className="border-none shadow-[var(--shadow-card)] rounded-[var(--radius)] bg-white overflow-hidden">
-              <CardHeader className="p-4 pb-2 border-b border-[var(--border-light)]">
+            <Card className="border border-[var(--border-purple)] shadow-[var(--shadow-card)] rounded-[var(--radius)] bg-white overflow-hidden">
+              <CardHeader className="p-4 pb-2 border-b border-[var(--border-purple)]">
                 <CardTitle className="text-xs font-bold text-[var(--text-dark)] uppercase tracking-wider flex items-center justify-between">
                   <span>Thêm thực phẩm nhanh</span>
                 </CardTitle>
@@ -700,8 +776,6 @@ export function Inventory() {
               
               <CardContent className="p-4 space-y-4">
                 
-
-
                 {/* Inline form inputs */}
                 <form onSubmit={handleAddSubmit} className="space-y-3.5 text-xs text-[var(--text-dark)]">
                   <div>
@@ -710,7 +784,7 @@ export function Inventory() {
                       placeholder="Nhập tên, VD: Cà chua đỏ"
                       value={formName}
                       onChange={(e) => setFormName(e.target.value)}
-                      className="h-9 border-[var(--border-light)] focus-visible:ring-[var(--success)] focus-visible:border-[var(--success)] rounded-[var(--radius-sm)]"
+                      className="h-9 border-[var(--border-purple)] focus-visible:ring-[var(--purple-primary)]/20 focus-visible:border-[var(--purple-primary)] rounded-[var(--radius-sm)] transition-all"
                       required
                     />
                   </div>
@@ -723,7 +797,7 @@ export function Inventory() {
                         placeholder="VD: 5"
                         value={formQty}
                         onChange={(e) => setFormQty(e.target.value)}
-                        className="h-9 border-[var(--border-light)] focus-visible:ring-[var(--success)] focus-visible:border-[var(--success)] rounded-[var(--radius-sm)]"
+                        className="h-9 border-[var(--border-purple)] focus-visible:ring-[var(--purple-primary)]/20 focus-visible:border-[var(--purple-primary)] rounded-[var(--radius-sm)] transition-all"
                         required
                       />
                     </div>
@@ -732,7 +806,7 @@ export function Inventory() {
                       <select
                         value={formUnit}
                         onChange={(e) => setFormUnit(e.target.value)}
-                        className="w-full h-9 bg-white border border-[var(--border-light)] rounded-[var(--radius-sm)] px-2.5 font-semibold text-xs text-[var(--text-dark)] focus:outline-none focus:ring-1 focus:ring-[var(--success)] focus:border-[var(--success)]"
+                        className="w-full h-9 bg-white border border-[var(--border-purple)] rounded-[var(--radius-sm)] px-2.5 font-bold text-xs text-[var(--text-dark)] focus:outline-none focus:ring-1 focus:ring-[var(--purple-primary)] focus:border-[var(--purple-primary)] transition-all"
                       >
                         {INVENTORY_UNITS.map(u => (
                           <option key={u} value={u}>{u}</option>
@@ -747,7 +821,7 @@ export function Inventory() {
                       <select
                         value={formLocation}
                         onChange={(e) => setFormLocation(e.target.value)}
-                        className="w-full h-9 bg-white border border-[var(--border-light)] rounded-[var(--radius-sm)] px-2.5 font-semibold text-xs text-[var(--text-dark)] focus:outline-none focus:ring-1 focus:ring-[var(--success)] focus:border-[var(--success)]"
+                        className="w-full h-9 bg-white border border-[var(--border-purple)] rounded-[var(--radius-sm)] px-2.5 font-bold text-xs text-[var(--text-dark)] focus:outline-none focus:ring-1 focus:ring-[var(--purple-primary)] focus:border-[var(--purple-primary)] transition-all"
                       >
                         <option value="Tủ lạnh">🧊 Tủ lạnh</option>
                         <option value="Ngăn đông">❄️ Ngăn đông</option>
@@ -761,7 +835,7 @@ export function Inventory() {
                         type="date"
                         value={formExpiry}
                         onChange={(e) => setFormExpiry(e.target.value)}
-                        className="h-9 border-[var(--border-light)] focus-visible:ring-[var(--success)] focus-visible:border-[var(--success)] rounded-[var(--radius-sm)]"
+                        className="h-9 border-[var(--border-purple)] focus-visible:ring-[var(--purple-primary)]/20 focus-visible:border-[var(--purple-primary)] rounded-[var(--radius-sm)] transition-all"
                       />
                     </div>
                   </div>
@@ -781,7 +855,7 @@ export function Inventory() {
                           key={sc.label}
                           type="button"
                           onClick={() => handleSetExpiryDays(sc.days)}
-                          className="bg-gray-100 dark:bg-gray-800 hover:bg-[var(--success)]/10 hover:text-[var(--success)] border border-transparent hover:border-[var(--success)]/30 rounded py-1 px-1.5 text-[9px] font-bold transition-all text-gray-600 dark:text-gray-400"
+                          className="bg-gray-100 dark:bg-gray-800 hover:bg-[var(--purple-primary)]/10 hover:text-[var(--purple-primary)] border border-transparent hover:border-[var(--purple-primary)]/30 rounded py-1 px-1.5 text-[9px] font-bold transition-all text-gray-600 dark:text-gray-400"
                         >
                           {sc.label}
                         </button>
@@ -800,7 +874,7 @@ export function Inventory() {
                   )}
                   <Button
                     type="submit"
-                    className="w-full bg-gradient-to-r from-[var(--success)] to-[#16A34A] text-white font-bold py-2.5 shadow-md hover-lift rounded-[var(--radius-btn)] mt-3 flex items-center justify-center gap-1.5"
+                    className="w-full bg-gradient-purple text-white font-bold py-2.5 shadow-[var(--shadow-btn-purple)] hover-lift rounded-[var(--radius-btn)] mt-3 flex items-center justify-center gap-1.5 border-none"
                   >
                     <Plus className="w-4 h-4" />
                     {editingItem ? `Cập nhật "${editingItem.name}"` : `Thêm vào ${formLocation}`}
@@ -813,11 +887,11 @@ export function Inventory() {
 
           {/* TAB CONTENT: AUDIT LOGS */}
           {rightTab === "logs" && (
-            <Card className="border-none shadow-[var(--shadow-card)] rounded-[var(--radius)] bg-white overflow-hidden max-h-[600px] flex flex-col">
-              <CardHeader className="p-4 pb-2 border-b border-[var(--border-light)] flex-shrink-0">
+            <Card className="border border-[var(--border-purple)] shadow-[var(--shadow-card)] rounded-[var(--radius)] bg-white overflow-hidden max-h-[600px] flex flex-col">
+              <CardHeader className="p-4 pb-2 border-b border-[var(--border-purple)] flex-shrink-0">
                 <CardTitle className="text-xs font-bold text-[var(--text-dark)] uppercase tracking-wider flex items-center justify-between">
                   <span>Lịch sử biến động</span>
-                  <History className="w-4 h-4 text-[var(--success)]" />
+                  <History className="w-4 h-4 text-[var(--purple-deep)]" />
                 </CardTitle>
               </CardHeader>
               
@@ -849,7 +923,7 @@ export function Inventory() {
                     return (
                       <div
                         key={log.MaNhatKy}
-                        className={`bg-gray-50 border-l-4 ${style.border} rounded-r-lg p-2.5 text-[10px] space-y-1 hover:shadow-sm transition-all`}
+                        className={`bg-gray-50 border border-[var(--border-purple)] border-l-4 ${style.border} rounded-r-lg p-2.5 text-[10px] space-y-1 hover:shadow-sm transition-all`}
                       >
                         <div className="flex items-center justify-between">
                           <span className="font-black text-[var(--text-dark)]">{log.TenTP}</span>
@@ -881,7 +955,6 @@ export function Inventory() {
               </CardContent>
             </Card>
           )}
-
         </div>
 
       </div>
@@ -906,7 +979,11 @@ export function Inventory() {
           isOpen={!!viewItem}
           onClose={() => setViewItem(null)}
           item={viewItem}
-          itemLogs={logs.filter((l: any) => l.MaTP === viewItem?.id)}
+          itemLogs={
+            viewItem?.isGroup
+              ? logs.filter((l: any) => viewItem.batches.some((b: any) => b.id === l.MaTP))
+              : logs.filter((l: any) => l.MaTP === viewItem?.id)
+          }
           onEdit={(item: any) => {
             setViewItem(null);
             setEditingItem(item);

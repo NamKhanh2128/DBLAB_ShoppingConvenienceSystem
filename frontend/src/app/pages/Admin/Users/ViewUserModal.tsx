@@ -23,7 +23,7 @@ const roleConfig: Record<string, { label: string; cls: string }> = {
 const statusConfig: Record<string, { label: string; cls: string }> = {
   active: { label: "Hoạt động", cls: "bg-green-100 text-green-700" },
   inactive: { label: "Tạm ngưng", cls: "bg-yellow-100 text-yellow-700" },
-  banned: { label: "Bị cấm", cls: "bg-red-100 text-red-700" },
+  locked: { label: "Đã khóa", cls: "bg-red-100 text-red-700" },
 };
 
 const mockActivity = [
@@ -36,15 +36,15 @@ export function ViewUserModal({ isOpen, onClose, user, onEdit, onBanToggle, onDe
   const [tab, setTab] = useState<"info" | "activity">("info");
   if (!user) return null;
 
-  const isBanned = user.status === "banned";
+  const isLocked = user.status === "locked";
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Chi tiết người dùng" size="lg">
       <div className="p-6 space-y-5">
         {/* Avatar + name header */}
         <div className="flex items-center gap-5 p-5 bg-gradient-to-br from-[var(--card-bg)] to-white rounded-[var(--radius-sm)] border border-[var(--border-light)]">
-          <Avatar className={`w-20 h-20 border-4 ${isBanned ? "border-red-200" : "border-[var(--purple-light)]"} shadow-lg`}>
-            <AvatarFallback className={`text-2xl font-black ${isBanned ? "bg-red-100 text-red-600" : "bg-gradient-purple text-white"}`}>
+          <Avatar className={`w-20 h-20 border-4 ${isLocked ? "border-red-200" : "border-[var(--purple-light)]"} shadow-lg`}>
+            <AvatarFallback className={`text-2xl font-black ${isLocked ? "bg-red-100 text-red-600" : "bg-gradient-purple text-white"}`}>
               {user.avatar}
             </AvatarFallback>
           </Avatar>
@@ -130,8 +130,8 @@ export function ViewUserModal({ isOpen, onClose, user, onEdit, onBanToggle, onDe
             <Edit className="w-4 h-4 mr-2" />Chỉnh sửa
           </Button>
           <Button onClick={() => onBanToggle(user)} variant="outline"
-            className={`flex-1 rounded-[var(--radius-btn)] font-semibold ${isBanned ? "border-green-400 text-green-600 hover:bg-green-50" : "border-orange-400 text-orange-600 hover:bg-orange-50"}`}>
-            {isBanned ? <><UserCheck className="w-4 h-4 mr-2" />Bỏ cấm</> : <><Ban className="w-4 h-4 mr-2" />Cấm TK</>}
+            className={`flex-1 rounded-[var(--radius-btn)] font-semibold ${isLocked ? "border-green-400 text-green-600 hover:bg-green-50" : "border-orange-400 text-orange-600 hover:bg-orange-50"}`}>
+            {isLocked ? <><UserCheck className="w-4 h-4 mr-2" />Mở khóa</> : <><Ban className="w-4 h-4 mr-2" />Khóa TK</>}
           </Button>
           <Button onClick={() => onDelete(user)} variant="outline" className="flex-1 rounded-[var(--radius-btn)] border-red-300 text-red-600 hover:bg-red-50 font-semibold">
             <Trash2 className="w-4 h-4 mr-2" />Xóa

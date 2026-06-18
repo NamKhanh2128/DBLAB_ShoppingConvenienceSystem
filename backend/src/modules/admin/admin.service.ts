@@ -94,4 +94,62 @@ export class AdminService {
     );
     return { cleanedCount };
   }
+
+  async getReports(actor: AdminActor) {
+    const raw = await this.repo.getReportsStats();
+
+    // Dựng 7 ngày gần nhất để điền dữ liệu biểu đồ cột
+    const daysOfWeek = ['CN', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
+    const activityData: any[] = [];
+    
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      const dateStr = date.toISOString().split('T')[0];
+      const dayName = daysOfWeek[date.getDay()];
+      activityData.push({
+        dateStr,
+        day: dayName,
+        new: 0,       // lists created
+        active: 0     // lists completed
+      });
+    }
+
+    // Ánh xạ dữ liệu từ DB vào mảng 7 ngày
+    if (raw.activity && Array.isArray(raw.activity)) {
+      for (const row of raw.activity) {
+        if (!row.NgayTao) continue;
+        let rowDateStr = '';
+        if (row.NgayTao instanceof Date) {
+          rowDateStr = row.NgayTao.toISOString().split('T')[0];
+        } else {
+          rowDateStr = String(row.NgayTao).split('T')[0];
+        }
+        const match = activityData.find(d => d.dateStr === rowDateStr);
+        if (match) {
+          match.new = Number(row.countNew || 0);
+          match.active = Number(row.countCompleted || 0);
+        }
+      }
+    }
+
+    // Lưu Audit Log hành động
+    await this.repo.addAuditLog(
+      actor.id,
+      actor.name,
+      'Xem báo cáo hệ thống',
+      'report',
+      'success',
+      'Đã truy xuất báo cáo tổng hợp chi tiêu, lãng phí và hoạt động toàn hệ thống',
+      actor.ip
+    );
+
+    return {
+      kpis: raw.kpis,
+      trend: raw.trend,
+      categoryDistribution: raw.categoryDistribution,
+      activity: activityData,
+      topFamilies: raw.topFamilies
+    };
+  }
 }

@@ -102,7 +102,7 @@ export function AddEditUserModal({ isOpen, onClose, onSave, user, mode, existing
             <SelectContent>
               <SelectItem value="active">Đang hoạt động</SelectItem>
               <SelectItem value="inactive">Tạm ngưng</SelectItem>
-              <SelectItem value="banned">Bị cấm</SelectItem>
+              <SelectItem value="locked">Đã khóa</SelectItem>
             </SelectContent>
           </Select>
         </div>

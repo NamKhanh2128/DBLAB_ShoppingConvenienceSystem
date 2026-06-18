@@ -38,7 +38,7 @@ export function AdminDashboard() {
   const totalUsers = dashStats?.totalUsers ?? users.length;
   const totalGroups = dashStats?.totalGroups ?? 12;
   const activeUsers = dashStats?.activeUsers ?? users.filter(u => u.status === "active").length;
-  const bannedUsers = dashStats?.bannedUsers ?? users.filter(u => u.status === "banned").length;
+  const bannedUsers = dashStats?.bannedUsers ?? users.filter(u => u.status === "locked").length;
   const newUsersCount = dashStats?.newUsersLast24h ?? 0;
   
   const errorLogs = auditLogs.filter(l => l.status === "error").length;
@@ -214,8 +214,8 @@ export function AdminDashboard() {
                     <p className="text-xs text-[var(--text-muted)] truncate">{u.email}</p>
                   </div>
                   <div className="text-right">
-                    <Badge className={`text-xs rounded-full px-2 py-0.5 font-semibold ${u.status === "active" ? "bg-green-100 text-green-700" : u.status === "banned" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"}`}>
-                      {u.status === "active" ? "Hoạt động" : u.status === "banned" ? "Bị cấm" : "Tạm ngưng"}
+                    <Badge className={`text-xs rounded-full px-2 py-0.5 font-semibold ${u.status === "active" ? "bg-green-100 text-green-700" : u.status === "locked" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"}`}>
+                      {u.status === "active" ? "Hoạt động" : u.status === "locked" ? "Đã khóa" : "Tạm ngưng"}
                     </Badge>
                     <p className="text-xs text-[var(--text-muted)] mt-0.5">{u.joinDate}</p>
                   </div>

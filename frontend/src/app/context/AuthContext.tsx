@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { authApi, getToken, setToken, setUser, removeToken, removeUser, getUser } from '../services/api';
+import { authApi, getToken, setToken, setUser, removeToken, removeUser, getUser, BASE_URL } from '../services/api';
 
 interface AuthContextType {
   user: any | null;
@@ -17,7 +17,10 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUserState] = useState<any | null>(getUser());
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(() => {
+    const hasStoredSession = !!localStorage.getItem('user') || !!localStorage.getItem('admin_session');
+    return hasStoredSession;
+  });
   const [groupId, setGroupId] = useState<number | null>(() => {
     const g = localStorage.getItem('groupId');
     return g ? Number(g) : null;
@@ -85,8 +88,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Tự động làm mới phiên đăng nhập ngầm khi người dùng F5 tải lại trang
   useEffect(() => {
     const initAuth = async () => {
+      const hasStoredSession = !!localStorage.getItem('user') || !!localStorage.getItem('admin_session');
+      if (!hasStoredSession) {
+        setIsLoading(false);
+        return;
+      }
+
       try {
-        const checkRes = await fetch('http://localhost:5000/api/v1/auth/refresh', { method: 'POST', credentials: 'include' });
+        const checkRes = await fetch(`${BASE_URL}/auth/refresh`, { method: 'POST', credentials: 'include' });
         if (checkRes.ok) {
           const refreshData = await checkRes.json();
           if (refreshData?.data?.token) {
@@ -99,6 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (gid) {
               updateGroupId(Number(gid));
             }
+            setIsLoading(false);
             return;
           }
         }
@@ -106,14 +116,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.warn('Không thể khôi phục phiên đăng nhập ngầm:', e);
       }
 
-      // Dọn dẹp nếu không thể tự động khôi phục
-      if (!getUser()) {
-        removeToken();
-        removeUser();
-        localStorage.removeItem('groupId');
-        setUserState(null);
-        setGroupId(null);
-      }
+      // Dọn dẹp nếu không thể tự động khôi phục (ví dụ cookie hết hạn hoặc lỗi xác thực)
+      removeToken();
+      removeUser();
+      localStorage.removeItem('groupId');
+      localStorage.removeItem('admin_session');
+      setUserState(null);
+      setGroupId(null);
+      setIsLoading(false);
     };
 
     initAuth();
